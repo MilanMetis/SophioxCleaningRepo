@@ -1,3 +1,6 @@
+#Code Author: soham Prajapati and Kayroze Shroff
+#Updated Date: 18-Feb-2026
+
 import pandas as pd
 import re
 from fuzzywuzzy import fuzz, process
@@ -1177,7 +1180,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
     return df
 
 
-def clean_main(file_path, output_path, logging=True, debug=True):
+def clean_main(file_path, output_path, logging=True, debug=False):
     """
     Main function to process bank statement files
     """
