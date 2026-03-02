@@ -1321,11 +1321,18 @@ def clean_bank_statement(df, file_path=None, logging=True):
 		# Use corrected values if available
 		if 'Debits_Corrected' in df.columns:
 			df['Debits'] = df['Debits_Corrected'].apply(
-				lambda x: round(-1 * float(x), 2) if pd.notna(x) else ""
+				lambda x: (
+					round(float(x), 2) if float(x) < 0
+					else round(-1 * float(x), 2)
+				) if pd.notna(x) else ""
 			)
+
 		elif "Debits" in df.columns:
 			df["Debits"] = df["Debits"].apply(
-				lambda x: round(-1 * float(x), 2)
+				lambda x: (
+					round(float(x), 2) if float(x) < 0
+					else round(-1 * float(x), 2)
+				)
 				if str(x).strip() not in ["", "nan", "None"]
 				else ""
 			)
@@ -1577,6 +1584,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\Admin\Downloads\eval_dir\output\canara_p2\canara_p2.csv"
-	output_csv = r"C:\Users\Admin\Downloads\eval_dir\output\canara_p2\rcanara_p2.csv"
-	clean_main(input_csv, output_csv, logging=True, debug=True)
+	input_csv = r"C:\metis\excel_cleaning\set1_to_3_output_ocr5\eval_dir\output\kotak_p8__621610079\kotak_p8__621610079.csv"
+	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\kotak_p8_cleaned.csv"
+	clean_main(input_csv, output_csv, logging=False, debug=True)
