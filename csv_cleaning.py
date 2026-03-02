@@ -1226,9 +1226,9 @@ def clean_bank_statement(df, file_path=None, logging=True):
 
 		
 		USELESS_TXN_REGEX = re.compile(
-			r'\bbrought\s+forward\b',
-			re.IGNORECASE
-		)
+        r'\bbrought\s+forward\b|\bopening\s*balance\b',
+        re.IGNORECASE
+    	)
 
 		def is_metadata_row(row):
 			"""Return True if ANY cell in the row fuzzy-matches ANY metadata phrase
