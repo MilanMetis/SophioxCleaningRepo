@@ -1,6 +1,3 @@
-#Code Author: soham Prajapati and Kayroze Shroff
-#Updated Date: 18-Feb-2026
-
 import pandas as pd
 import re
 from fuzzywuzzy import fuzz, process
@@ -24,7 +21,7 @@ HEADER_REGEX = [
 	r'\bcredits?\b',r'\bdeposits?\b',r'\bwithdrawals?\b',
 	r'\bamt|amount|value\b',r'\bpayment\s*n\s*a\s*r\s*r\s*a\s*t\s*i\s*o\s*n\b',r'\b(?:txn|tran|transaction)\s*d\s*a\s*t\s*e\s*(?:&|and)\s*t\s*i\s*m\s*e\b',
 	r'\btype\b',r'\bcredit\s*amount\b',r'\bdebit\s*amount\b',
-	r'\btxn|transaction\b',r'\btran\s*date\b',
+	r'\btxn|transaction\b',r'\btran\s*date\b',r'\bg\s*\.?\s*l\s*\.?\s*d\s*a\s*t\s*e\b',
 	r'\b(narration|naration|description|escription|remark|remarks|particulars?|details?)\b',
 	r'\bdate|post\s*date|value\s*date\b',r'\btran(?:saction)?\s*date\b',r'\brunning\s*bal(?:ance)?\b',
 	r'\bcheque|chq|ref(erence)?\b',r'\bbook\s*bal(?:ance)?\b',r'\bdat\s*value\b',
@@ -121,23 +118,44 @@ def is_partial_row(row):
 
 
 def remove_duplicate_column(df):
-	"""
-	Remove duplicate columns from dataframe
-	"""
-	df = df.loc[:, ~df.columns.duplicated()]
-	normalized_headers = [re.sub(r'\s+', '', str(col)).strip().lower() for col in df.columns]
+    """
+    Remove duplicate columns and drop rows that contain
+    at least 2 column names (fuzzy match >= 90%)
+    """
+	
+    # 1️⃣ Remove duplicate columns
+    df = df.loc[:, ~df.columns.duplicated()]
+	
+    # Normalize column headers
+    normalized_headers = [
+        re.sub(r'\s+', '', str(col)).strip().lower()
+        for col in df.columns
+    ]
+	
+    print("Normalized Headers:", normalized_headers)
 
-	def row_has_any_header_value(row):
-		for cell in row:
-			norm_cell = re.sub(r'\s+', '', str(cell)).strip().lower()
-			for header in normalized_headers:
-				if header == norm_cell:
-					return True
-		return False
+    def row_contains_multiple_headers(row):
+        match_count = 0
+		
+        for cell in row:
+            norm_cell = re.sub(r'\s+', '', str(cell)).strip().lower()
+			
+            for header in normalized_headers:
+                similarity = fuzz.ratio(norm_cell, header)
+				
+                if similarity >= 90:
+                    match_count += 1
+                    break  # avoid double count for same cell
+			
+            if match_count >= 3:
+                return True
+		
+        return False
 
-	df = df[~df.apply(row_has_any_header_value, axis=1)]
-	return df
-
+    # 2️⃣ Drop rows where >= 2 headers matched
+    df = df[~df.apply(row_contains_multiple_headers)]
+	
+    return df
 
 def extract_amount(value, dr_cr=''):
 	"""
@@ -372,12 +390,12 @@ def clean_debit_credit(df):
 	#Detect already separated debit & credit columns
 	# --------------------------------------------------
 	has_debit_col = any(
-		('debit' in col or re.search(r'\bdr\b', col))
+		'debit' in col or 'dr amount' in col or col == 'dr'
 		for col in cols_lower
 	)
 
 	has_credit_col = any(
-		('credit' in col or re.search(r'\bcr\b', col))
+		'credit' in col or 'cr amount' in col or col == 'cr'
 		for col in cols_lower
 	)
 
@@ -385,13 +403,10 @@ def clean_debit_credit(df):
 		print("Already split Debit & Credit columns detected.")
 		return df
 
-
 	has_drcr = any(
 		re.fullmatch(r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|cr/dr|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit)', col, flags=re.IGNORECASE)
 		for col in df.columns
 	) or any(col.lower() in ['type', 'txn type', 'transaction type', 'cr/dr', 'amount'] for col in df.columns)
-	print("==================================")
-	print("DR/CR columns detected:",has_drcr)
 
 
 	has_mixed_amount = any(
@@ -400,12 +415,9 @@ def clean_debit_credit(df):
 
 	if has_drcr:
 		df = parse_debit_credit_split_safe(df)
-		print("@@@@@@@@@@@@@@@@@@@@@@@@@@")
 	elif has_mixed_amount:
 		df = split_drcr_from_amount_column(df)
-	# 	pass
-	# print("==================================")
-	# print(df[['Debits','Credits']])
+	
 	return df
 
 
@@ -415,7 +427,11 @@ def split_drcr_from_amount_column(df):
 	Withdrawal(Dr)/ Deposit(Cr)
 	"""
 
-	if "Debits" in df.columns or "Credits" in df.columns:
+	#  If separate withdraw & deposit columns exist → skip
+	separate_debit = any(re.search(r'withdraw', c, re.I) for c in df.columns)
+	separate_credit = any(re.search(r'deposit', c, re.I) for c in df.columns)
+
+	if separate_debit and separate_credit:
 		return df
 
 	# Detect unified amount column
@@ -450,10 +466,8 @@ def split_drcr_from_amount_column(df):
 	df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
 	df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce')
  
-	df.to_csv("debug_after_split_drcr_amount2.csv", index=False) # Debugging output
 
 	return df
-
 
 
 def normalize_drcr_value(val):
@@ -479,7 +493,6 @@ def parse_debit_credit_split_safe(df):
 	- Type column fallback
 	"""
 
-	print("==========================")
 
 	columns = list(df.columns)
 
@@ -501,7 +514,6 @@ def parse_debit_credit_split_safe(df):
 		)
 	]
 
-	print(f"DR/CR column indexes found: {drcr_indexes}")
 
 	# -----------------------------
 	# Detect Type column (fallback)
@@ -547,7 +559,6 @@ def parse_debit_credit_split_safe(df):
 
 	df.columns = cols
 
-	print("Columns after rename:", df.columns)
 
 	# -----------------------------
 	# Normalize DR/CR values
@@ -582,12 +593,6 @@ def parse_debit_credit_split_safe(df):
 		df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce')
 		
 		
-	print("SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS")
-	
-
-	# Debug file
-	df.to_csv("debug_after_parse_debit_credit_split_safe.csv", index=False)
-	print(df[['Amount', 'AMOUNT_DRCR', 'Balance', 'BALANCE_DRCR']].head())
 	return df
 
 def merge_balance_with_adjacent_type(df):
@@ -632,7 +637,6 @@ def merge_balance_with_adjacent_type(df):
 	mask = df['Balance'] != ''
 	df.loc[mask, 'Balance'] = df.loc[mask, 'Balance'] + df.loc[mask, next_col]
 
-	df.to_csv("debug_after_merge_balance_adjacent.csv", index=False) # Debugging output
 	return df
 
 def normalize_headers(df):
@@ -640,12 +644,12 @@ def normalize_headers(df):
 	Normalize column headers to standard names
 	"""
 	headers = {
-		"XN Date": {"Date(ValueDate)","TransactionDate &Time","Tran Date","Date Day/Night","TransactionDate","TxnDate& Time","DAT VALUE", "Date(Value Date","Date& Time", "Post Date", "PostDate","Txn Posted Date", "TRANSACTION DATE", "Tran Date", "TranDate","XN Date", "Date", "Transaction date", "Txn Date", "Post date","ate", "DATE", "Transaction Date", "TRAN DATE", "TRANDATE","Transactio n Date"},
+		"XN Date": {"Date(ValueDate)","TransactionDate &Time","Tran Date","GL. Date","Date Day/Night","TransactionDate","TxnDate& Time","DAT VALUE", "Date(Value Date","Date& Time", "Post Date", "PostDate","Txn Posted Date", "TRANSACTION DATE", "Tran Date", "TranDate","XN Date", "Date", "Transaction date", "Txn Date", "Post date","ate", "DATE", "Transaction Date", "TRAN DATE", "TRANDATE","Value Date","Transactio n Date"},
 		"Value Date": {"Value Date", "VAL DATE", "Val Date", "VALUE DT","ValueDate", "VALDATE"},
 		"Cheque No": {"Cheque/Refer enceNo","Cheque.No./Ref.No", "Cheq No ue", "CHQ/REFNO.","CHEQUE/REFERENCE#", "ChequeNo.", "Chq.No", "Cheque No","Chq./ref.no", "Ref No", "Cheque number", "Ref no./cheque no.","Chq.no", "Chq No", "CHQ.NO.", "CHQ NO", "Cheque No.","Cheque Number", "Chq./Ref.No", "Chq.No."," Ref No./Cheque No.", "CHQ.NO", "Cnq.No.","Chq/Ref number", "Chq/Ref No"},
 		"Narration": {"RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks"},
-		"Credits": {"Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
-		"Debits": {"Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
+		"Credits": {"Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
+		"Debits": {"Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
 		"Balance": {"BALANCE()","TotalAmount","BOOKBAL", "BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance"}
 	}
 
@@ -653,7 +657,7 @@ def normalize_headers(df):
 		"XN Date": [
 			r'\btxn\s*d-ate\b',
 			r'\btran\s*date\b',
-			r'\bpost\s*date\b',
+			r'\bpost\s*date\b',r'\bg\s*\.?\s*l\s*\.?\s*d\s*a\s*t\s*e\b',
 			r'\btransaction\s*date\b',
 			r'\bdate\s*value\s*date\b',r'\b(?:txn|tran|transaction)\s*d\s*a\s*t\s*e\s*(?:&|and)\s*t\s*i\s*m\s*e\b',
 			r'\bdate\s*(?:&|and)\s*time\b',r'\bdat\s*value\b',r'\btransaction\s*date\b',r'\btxn\s*date\s*(?:&|and)\s*time\b',r'\bdate\s*day\s*/\s*night\b',
@@ -778,7 +782,6 @@ def normalize_headers(df):
 	else:
 		df["Cheque No"] = ""
   
-	df.to_csv("debug_after_normalize_headers_final.csv", index=False) # Debugging output
 	return df
 
 
@@ -1197,7 +1200,8 @@ def clean_bank_statement(df, file_path=None, logging=True):
 
 	def step_remove_metadata_rows(df):
 		"""
-		Remove ANY row where ANY cell fuzzy-matches a metadata phrase.
+		Remove ANY row where ANY cell fuzzy-matches a metadata phrase
+		OR matches specific regex patterns for unwanted transactions.
 		Uses RapidFuzz (threshold ≥70) on all columns.
 		"""
 		# Comprehensive metadata phrases (including common OCR errors)
@@ -1206,45 +1210,69 @@ def clean_bank_statement(df, file_path=None, logging=True):
 			"CARRIED FORWARD", "CARRIEDFORWARD", "CARRIED FWD", "C/F", "CF",
 			"CLOSING BALANCE", "CLOSINGBALANCE", "CLOSING BAL", "CL BAL",
 			"OPENING BALANCE", "OPENINGBALANCE", "OPENING BAL", "OP BAL",
-			"BALANCE", "TOTAL", "TOT", "SUB TOTAL", "SUBTOTAL",
+			"BALANCE", "TOTAL" , "SUB TOTAL", "SUBTOTAL","Brought Forward"
 			"TOTAL AMOUNT", "TOTAL AMT", "GRAND TOTAL", "SUMMARY",
 			"TRANSACTION TOTAL", "TRANSACTIONTOTAL",
 			"TOTAL DEBIT", "TOTAL CREDIT", "TOTALDEBIT", "TOTALCREDIT",
 			"YOUR OPENING", "BALANCE ON","PageTotal",
 			"LOSINGBALANCE", "RROUGHTFOROWARD", "BROOGHTFORWARD",
 			"TRANSACTIONTOTAI", "TRANSACTION TOTAL DRICR",
-			"BALANCE CARRIED", "BALANCE BROUGHT"
+			"BALANCE CARRIED", "BALANCE BROUGHT","Cumulative Totals","b/f.."
 		]
 
 		# Clean and lowercase once
 		phrases_clean = [p.lower().strip() for p in METADATA_PHRASES]
 
+		
+		USELESS_TXN_REGEX = re.compile(
+			r'\bbrought\s+forward\b',
+			re.IGNORECASE
+		)
+
 		def is_metadata_row(row):
-			"""Return True if ANY cell in the row fuzzy-matches ANY metadata phrase."""
+			"""Return True if ANY cell in the row fuzzy-matches ANY metadata phrase
+			OR matches the useless transaction regex."""
 			for col in row.index:
 				cell = str(row[col]).strip()
 				if not cell or cell.lower() in ["nan", "none", ""]:
 					continue
 				cell_lower = cell.lower()
+
+				# 1. Fuzzy match against metadata phrases
 				for phrase in phrases_clean:
-					# Skip very short phrases unless they are abbreviations
-					if len(phrase) < 4 and phrase not in ["b/f", "c/f", "bf", "cf", "tot"]:
+					if len(phrase) < 4 and phrase not in ["b/f", "c/f", "bf", "cf"]:
 						continue
 					ratio = rfuzz.ratio(cell_lower, phrase)
-					if ratio >= 70:   # Catches OCR errors (e.g., "Totol Amont")
+					if ratio >= 75:
 						return True
+
+				# 2. Regex match for useless transaction patterns
+				if USELESS_TXN_REGEX.search(cell):
+					return True
+
 			return False
 
 		# Apply filter – remove rows where condition is True
 		mask = df.apply(is_metadata_row, axis=1)
 		removed_count = mask.sum()
 		if removed_count > 0:
-			print(f"🧹 Removed {removed_count} metadata row(s) (fuzzy match in all column)")
+			print(f"Removed {removed_count} metadata row(s) (fuzzy match or regex pattern)")
+			# Print the rows that were removed
+			removed_rows = df[mask]
+			# print("Rows removed:")
+			for idx, row in removed_rows.iterrows():
+				# Format a concise representation: index and first few non-empty values
+				row_preview = " | ".join(str(v)[:50] for v in row if pd.notna(v) and str(v).strip())
+				# print(f"  Row {idx}: {row_preview}")
+		else:
+			print("No metadata rows removed.")
 		df = df[~mask]
+
 		return df
+
 	def step_parse_amounts(df):
 		# Store original string values BEFORE processing
-		if 'Debits' in df.columns:
+		if 'Debits' in df.columns:   
 			df['Debits_Raw'] = df['Debits'].astype(str)
 		if 'Credits' in df.columns:
 			df['Credits_Raw'] = df['Credits'].astype(str)
@@ -1396,6 +1424,9 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 			df = df_raw.reset_index(drop=True)  # Set actual header
 
 			cleaned_df = clean_bank_statement(df, file_path, logging)
+			try:
+				cleaned_df[["Debits", "Credits"]] = cleaned_df[["Debits", "Credits"]].replace({"NA":np.nan, "-":np.nan,"0":np.nan, "0.00":np.nan, 0:np.nan})
+			except:pass
 
 			if cleaned_df is not None and not cleaned_df.empty:
 				# NEW: Calculate differences and verify OCR accuracy
@@ -1545,6 +1576,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\Admin\Downloads\set1-2_test_output(new)\set1-2_test_output\output\icici_p1\icici_p1.csv"
-	output_csv = r"C:\Users\Admin\Downloads\set1-2_test_output(new)\set1-2_test_output\output\icici_p1\ricici_p1.csv"
+	input_csv = r"C:\Users\Admin\Downloads\eval_dir\output\canara_p2\canara_p2.csv"
+	output_csv = r"C:\Users\Admin\Downloads\eval_dir\output\canara_p2\rcanara_p2.csv"
 	clean_main(input_csv, output_csv, logging=True, debug=True)
