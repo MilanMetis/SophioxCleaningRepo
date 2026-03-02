@@ -1226,9 +1226,9 @@ def clean_bank_statement(df, file_path=None, logging=True):
 
 		
 		USELESS_TXN_REGEX = re.compile(
-			r'\bbrought\s+forward\b',
-			re.IGNORECASE
-		)
+        r'\bbrought\s+forward\b|\bopening\s*balance\b',
+        re.IGNORECASE
+    	)
 
 		def is_metadata_row(row):
 			"""Return True if ANY cell in the row fuzzy-matches ANY metadata phrase
@@ -1577,6 +1577,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\Admin\Downloads\eval_dir\output\canara_p2\canara_p2.csv"
-	output_csv = r"C:\Users\Admin\Downloads\eval_dir\output\canara_p2\rcanara_p2.csv"
+	input_csv = r"C:\Users\Admin\Downloads\eval_dir\output\corporation_p4.PDF\corporation_p4.PDF.csv"
+	output_csv = r"C:\Users\Admin\Downloads\eval_dir\output\corporation_p4.PDF\rcorporation_p4.PDF.csv"
 	clean_main(input_csv, output_csv, logging=True, debug=True)
