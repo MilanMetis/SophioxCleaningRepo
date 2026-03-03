@@ -27,9 +27,7 @@ HEADER_REGEX = [
 	r'\bcheque|chq|ref(erence)?\b',r'\bbook\s*bal(?:ance)?\b',r'\bdat\s*value\b',
 	r'\bdate\s*(?:&|and)\s*time\b',r'\btxn\s*date\s*(?:&|and)\s*time\b',r'\btransaction\s*details\s*comment.*payment\s*method\b',
 	r'\bdate\s*day\s*/\s*night\b',r'\btransaction\s*date\b',r'\btransaction\s*remarks\b',r'\bdeposit\s*amt.*inr\b',r'\bwithdrawal\s*amt\s*\(?inr\)?\b'
-
-
-]
+	]
 
 
 # FUZZY + REGEX MATCHER
@@ -51,6 +49,73 @@ def fuzzy_regex_match(text, patterns, threshold=0.75):
 			return True
 
 	return False
+
+def clean_by_majority_structure(df, max_gap_cap=4):
+    """
+    Cleans dataframe based on majority row structure.
+    
+    Parameters:
+        df (pd.DataFrame): Input dataframe
+        max_gap_cap (int): Maximum allowed NaN gap cap (default=4)
+        
+    Returns:
+        pd.DataFrame: Cleaned dataframe
+    """
+    
+    # -------- 1️⃣ Calculate max vertical NaN gap per column --------
+    def max_nan_gap(series):
+        max_gap = 0
+        count = 0
+        found_value = False
+        values = series.values
+
+        for val in values:
+            if not pd.isna(val):
+                if found_value:
+                    max_gap = max(max_gap, count)
+                count = 0
+                found_value = True
+            else:
+                if found_value:
+                    count += 1
+
+        return max_gap
+
+    results = {col: max_nan_gap(df[col]) for col in df.columns}
+    max_gap = max(results.values())
+
+    # Cap max_gap
+    if max_gap > max_gap_cap:
+        max_gap = max_gap_cap
+
+    # -------- 2️⃣ Clean dataframe by majority shape --------
+    df = df.replace("", np.nan)
+    df_copy = df.copy()
+
+    original_cols = list(df_copy.columns)
+    col_positions = {col: idx for idx, col in enumerate(original_cols)}
+
+    def last_valid_position(row, nan_threshold):
+        for col in reversed(original_cols):
+            if not pd.isna(row[col]):
+                return col_positions[col]
+        return np.nan
+
+    df_copy['_last_pos'] = df_copy.apply(
+        lambda row: last_valid_position(row, max_gap),
+        axis=1
+    )
+
+    # Fill empty rows with majority structure
+    majority_pos = df_copy['_last_pos'].mode()[0]
+    df_copy['_last_pos'] = df_copy['_last_pos'].fillna(majority_pos)
+
+    # Keep only majority structure rows
+    df_clean = df_copy[df_copy['_last_pos'] == majority_pos].copy()
+    df_clean.drop(columns=['_last_pos'], inplace=True)
+    df_clean.reset_index(drop=True, inplace=True)
+
+    return df_clean
 
 
 # HEADER ROW DETECTOR
@@ -117,45 +182,95 @@ def is_partial_row(row):
 	return  not has_amount and has_narration
 
 
-def remove_duplicate_column(df):
-    """
-    Remove duplicate columns and drop rows that contain
-    at least 2 column names (fuzzy match >= 90%)
-    """
+# def remove_duplicate_column(df):
+#     """
+#     Remove duplicate columns and drop rows that contain
+#     at least 2 column names (fuzzy match >= 90%)
+#     """
 	
-    # 1️⃣ Remove duplicate columns
-    df = df.loc[:, ~df.columns.duplicated()]
+#     # 1️⃣ Remove duplicate columns
+#     df = df.loc[:, ~df.columns.duplicated()]
 	
-    # Normalize column headers
+#     # Normalize column headers
+#     normalized_headers = [
+#         re.sub(r'\s+', '', str(col)).strip().lower()
+#         for col in df.columns
+#     ]
+	
+#     print("Normalized Headers:", normalized_headers)
+
+#     def row_contains_multiple_headers(row):
+#         match_count = 0
+		
+#         for cell in row:
+#             norm_cell = re.sub(r'\s+', '', str(cell)).strip().lower()
+			
+#             for header in normalized_headers:
+#                 similarity = fuzz.ratio(norm_cell, header)
+				
+#                 if similarity >= 90:
+#                     match_count += 1
+#                     break  # avoid double count for same cell
+			
+#             if match_count >= 3:
+#                 return True
+		
+#         return False
+
+#     # 2️⃣ Drop rows where >= 2 headers matched
+#     df = df[~df.apply(row_contains_multiple_headers)]
+	
+#     return df
+
+def remove_duplicate_column(df, match_threshold=2):
+    """
+    Removes duplicate column names and drops rows that are essentially 
+    repeated headers (common in PDF/OCR exports).
+    """
+    
+    # 1️⃣ Ensure Column Names are Unique (Fixes the AttributeError you had earlier)
+    # This keeps the first occurrence and removes subsequent duplicates
+    df = df.loc[:, ~df.columns.duplicated()].copy()
+    
+    # 2️⃣ Pre-normalize headers once (instead of inside the loop)
+    # We remove whitespace and lowercase them for comparison
     normalized_headers = [
         re.sub(r'\s+', '', str(col)).strip().lower()
         for col in df.columns
     ]
-	
-    print("Normalized Headers:", normalized_headers)
 
-    def row_contains_multiple_headers(row):
+    def is_repeated_header_row(row):
+        # 🟢 RESET: match_count starts at 0 for EVERY new row
         match_count = 0
-		
-        for cell in row:
-            norm_cell = re.sub(r'\s+', '', str(cell)).strip().lower()
-			
-            for header in normalized_headers:
-                similarity = fuzz.ratio(norm_cell, header)
-				
-                if similarity >= 90:
-                    match_count += 1
-                    break  # avoid double count for same cell
-			
-            if match_count >= 3:
+        
+        # Convert row to list of strings and clean them
+        cells = [re.sub(r'\s+', '', str(cell)).strip().lower() for cell in row if pd.notnull(cell)]
+        
+        for cell in cells:
+            # OPTIMIZATION: Check for exact match first (instant) 
+            # before trying fuzzy match (slow)
+            if cell in normalized_headers:
+                match_count += 1
+            else:
+                # Only fuzzy match if cell isn't an exact match
+                for header in normalized_headers:
+                    if fuzz.ratio(cell, header) >= 90:
+                        match_count += 1
+                        break  # Stop checking headers for this specific cell
+            
+            # 3️⃣ SHORT CIRCUIT: If we already hit the threshold, stop checking this row
+            if match_count >= match_threshold:
                 return True
-		
+        
         return False
 
-    # 2️⃣ Drop rows where >= 2 headers matched
-    df = df[~df.apply(row_contains_multiple_headers)]
-	
-    return df
+    # 4️⃣ Filter the DataFrame
+    # df.apply calls our function row by row
+    mask = df.apply(is_repeated_header_row, axis=1)
+    df_cleaned = df[~mask].reset_index(drop=True)
+    
+    return df_cleaned
+
 
 def extract_amount(value, dr_cr=''):
 	"""
@@ -647,7 +762,7 @@ def normalize_headers(df):
 		"XN Date": {"Date(ValueDate)","TransactionDate &Time","Tran Date","GL. Date","Date Day/Night","TransactionDate","TxnDate& Time","DAT VALUE", "Date(Value Date","Date& Time", "Post Date", "PostDate","Txn Posted Date", "TRANSACTION DATE", "Tran Date", "TranDate","XN Date", "Date", "Transaction date", "Txn Date", "Post date","ate", "DATE", "Transaction Date", "TRAN DATE", "TRANDATE","Value Date","Transactio n Date"},
 		"Value Date": {"Value Date", "VAL DATE", "Val Date", "VALUE DT","ValueDate", "VALDATE"},
 		"Cheque No": {"Cheque/Refer enceNo","Cheque.No./Ref.No", "Cheq No ue", "CHQ/REFNO.","CHEQUE/REFERENCE#", "ChequeNo.", "Chq.No", "Cheque No","Chq./ref.no", "Ref No", "Cheque number", "Ref no./cheque no.","Chq.no", "Chq No", "CHQ.NO.", "CHQ NO", "Cheque No.","Cheque Number", "Chq./Ref.No", "Chq.No."," Ref No./Cheque No.", "CHQ.NO", "Cnq.No.","Chq/Ref number", "Chq/Ref No"},
-		"Narration": {"RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks"},
+		"Narration": {"RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks","TransactionParticulars"},
 		"Credits": {"Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
 		"Debits": {"Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
 		"Balance": {"BALANCE()","TotalAmount","BOOKBAL", "BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance"}
@@ -1421,7 +1536,7 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		print(f"Debug mode: {debug}")
 		
 		df_raw = pd.read_csv(file_path, header=None)
-		
+		df_raw = run_step("clean_debit_credit",clean_by_majority_structure,df_raw)
 		header_row = detect_header_row(df_raw)
 		
 		if header_row is not None:
@@ -1583,6 +1698,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"C:\metis\excel_cleaning\set1_to_3_output_ocr5\eval_dir\output\kotak_p8__621610079\kotak_p8__621610079.csv"
-	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\kotak_p8_cleaned.csv"
+	input_csv = r"D:\Sophiox Cleaning Code\kotak_p1.csv"
+	output_csv = r"kotak_p1_cleaned.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
