@@ -619,7 +619,7 @@ def parse_debit_credit_split_safe(df):
 		if re.fullmatch(
 			r'(?:'
 			r'DR[/|]CR|CR[/|]DR|'
-			r'DR[_]?CR|DRCR|'
+			r'DR[_]?CR|DRCR|DRICR|'
 			r'DR\.?|CR\.?|'
 			r'Debit[/|]Credit|Credit[/|]Debit|'
 			r'Debit\s*/\s*Credit|Credit\s*/\s*Debit'
@@ -1698,6 +1698,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"D:\Sophiox Cleaning Code\kotak_p1.csv"
-	output_csv = r"kotak_p1_cleaned.csv"
+	input_csv = r"C:\metis\excel_cleaning\set1_to_3_output_ocr5\eval_dir\output\indusind_p5\indusind_p5.csv"
+	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\indusind_p5_cleaned.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
