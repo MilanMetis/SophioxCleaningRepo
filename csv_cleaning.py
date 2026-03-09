@@ -765,18 +765,19 @@ def normalize_headers(df):
 	Normalize column headers to standard names
 	"""
 	headers = {
-		"XN Date": {"Date(ValueDate)","TransactionDate &Time","Tran Date","GL. Date","Date Day/Night","TransactionDate","TxnDate& Time","DAT VALUE", "Date(Value Date","Date& Time", "Post Date", "PostDate","Txn Posted Date", "TRANSACTION DATE", "Tran Date", "TranDate","XN Date", "Date", "Transaction date", "Txn Date", "Post date","ate", "DATE", "Transaction Date", "TRAN DATE", "TRANDATE","Value Date","Transactio n Date"},
+		"XN Date": {"Date(ValueDate)","Date","TransactionDate &Time","Tran Date","GL. Date","Date Day/Night","TransactionDate","TxnDate& Time","DAT VALUE", "Date(Value Date","Date& Time", "Post Date", "PostDate","Txn Posted Date", "TRANSACTION DATE", "Tran Date", "TranDate","XN Date", "Transaction date", "Txn Date", "Post date","ate", "DATE", "Transaction Date", "TRAN DATE", "TRANDATE","Value Date","Transactio n Date"},
 		"Value Date": {"Value Date", "VAL DATE", "Val Date", "VALUE DT","ValueDate", "VALDATE"},
 		"Cheque No": {"Cheque/Refer enceNo","Cheque.No./Ref.No", "Cheq No ue", "CHQ/REFNO.","CHEQUE/REFERENCE#", "ChequeNo.", "Chq.No", "Cheque No","Chq./ref.no", "Ref No", "Cheque number", "Ref no./cheque no.","Chq.no", "Chq No", "CHQ.NO.", "CHQ NO", "Cheque No.","Cheque Number", "Chq./Ref.No", "Chq.No."," Ref No./Cheque No.", "CHQ.NO", "Cnq.No.","Chq/Ref number", "Chq/Ref No"},
 		"Narration": {"TransactionReference","RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks","TransactionParticulars"},
 		"Credits": {"Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
 		"Debits": {"Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
-		"Balance": {"TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance"}
+		"Balance": {"TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance","Total Amount Dr/Cr"}
 	}
 
 	HEADER_REGEX = {
 		"XN Date": [
 			r'\btxn\s*d-ate\b',
+			r'\bdate\b',
 			r'\btran\s*date\b',
 			r'\bpost\s*date\b',r'\bg\s*\.?\s*l\s*\.?\s*d\s*a\s*t\s*e\b',
 			r'\btransaction\s*date\b',

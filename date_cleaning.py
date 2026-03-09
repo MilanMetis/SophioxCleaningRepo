@@ -94,7 +94,8 @@ def parse_custom_date(x) -> Optional[str]:
             return None
 
         original_x = str(x).strip()
-        
+        # NEW: Remove trailing time components (e.g., " 00:00", " 00:00:00", " 00:00 AM/PM")
+        original_x = re.sub(r'\s+\d{1,2}:\d{2}(:\d{2})?(\s*[AP]M)?$', '', original_x, flags=re.IGNORECASE) 
         # Check for invalid day "00" or "00:" patterns - return None immediately
         if re.search(r'(^|\D)00($|\D)', original_x):
             return None
