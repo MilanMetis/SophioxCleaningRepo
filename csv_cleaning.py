@@ -527,12 +527,10 @@ def clean_debit_credit(df):
 		re.fullmatch(r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|cr/dr|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit)', col, flags=re.IGNORECASE)
 		for col in df.columns
 	) or any(col.lower() in ['type', 'txn type', 'transaction type', 'cr/dr', 'amount'] for col in df.columns)
-	print("DR/CR columns detected:",has_drcr)
 
 	has_mixed_amount = any(
 		re.search(r'withdrawal\s*\(?\s*dr\s*\)?\s*[/|\\-]\s*deposit\s*\(?\s*cr\s*\)?|debit.*credit|dr.*cr|amount', col, re.IGNORECASE) for col in df.columns
 	)
-	print("Mixed amount columns detected:", has_mixed_amount)
 	if has_drcr:
 		df = parse_debit_credit_split_safe(df)
 	elif has_mixed_amount:
@@ -586,7 +584,6 @@ def split_drcr_from_amount_column(df):
 	df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
 	df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce')
 	
-	print(df['Credits'])
 
 	return df
 
