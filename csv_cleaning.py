@@ -283,12 +283,15 @@ def extract_amount(value, dr_cr=''):
 
 	text = str(value).lower().strip()
 	
-	# Check for negative sign
+	text = text.replace('ï¼ˆ', '(').replace('ï¼‰', ')')
+
+	# Check for negative sign (DR only)
 	is_negative = False
-	if text.startswith('-') or '(' in text:
+	if text.startswith('-') or re.search(r'\bdr\b', text, re.I):
 		is_negative = True
-		# Remove negative indicators
-		text = text.replace('-', '').replace('(', '').replace(')', '')
+
+	# Remove brackets and minus
+	text = text.replace('-', '').replace('(', '').replace(')', '')
 	
 	# Remove CR/DR text based on parameter
 	if dr_cr == 'dr':
@@ -524,12 +527,12 @@ def clean_debit_credit(df):
 		re.fullmatch(r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|cr/dr|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit)', col, flags=re.IGNORECASE)
 		for col in df.columns
 	) or any(col.lower() in ['type', 'txn type', 'transaction type', 'cr/dr', 'amount'] for col in df.columns)
-
+	print("DR/CR columns detected:",has_drcr)
 
 	has_mixed_amount = any(
 		re.search(r'withdrawal\s*\(?\s*dr\s*\)?\s*[/|\\-]\s*deposit\s*\(?\s*cr\s*\)?|debit.*credit|dr.*cr|amount', col, re.IGNORECASE) for col in df.columns
 	)
-
+	print("Mixed amount columns detected:", has_mixed_amount)
 	if has_drcr:
 		df = parse_debit_credit_split_safe(df)
 	elif has_mixed_amount:
@@ -582,7 +585,8 @@ def split_drcr_from_amount_column(df):
 
 	df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
 	df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce')
- 
+	
+	print(df['Credits'])
 
 	return df
 
@@ -767,7 +771,7 @@ def normalize_headers(df):
 		"Narration": {"TransactionReference","RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks","TransactionParticulars"},
 		"Credits": {"Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
 		"Debits": {"Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
-		"Balance": {"BALANCE()","TotalAmount","BOOKBAL", "BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance"}
+		"Balance": {"TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance"}
 	}
 
 	HEADER_REGEX = {
@@ -1464,6 +1468,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 				if str(x).strip() not in ["", "nan", "None"]
 				else ""
 			)
+   
 
 		# Balance - use corrected if available
 		if 'Balance_Corrected' in df.columns:
@@ -1700,6 +1705,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"C:\metis\excel_cleaning\set1_to_3_output_ocr5\eval_dir\output\pnb_p3\pnb_p3.csv"
-	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\pnb_p3_cleaned.csv"
+	input_csv = r"C:\metis\excel_cleaning\set_1_to_5_output\eval_dir\output\kotak_p5\kotak_p5.csv"
+	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\kotak_p5_cleaned.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
