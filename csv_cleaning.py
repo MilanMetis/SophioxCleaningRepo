@@ -26,7 +26,8 @@ HEADER_REGEX = [
 	r'\bdate|post\s*date|value\s*date\b',r'\btran(?:saction)?\s*date\b',r'\brunning\s*bal(?:ance)?\b',
 	r'\bcheque|chq|ref(erence)?\b',r'\bbook\s*bal(?:ance)?\b',r'\bdat\s*value\b',
 	r'\bdate\s*(?:&|and)\s*time\b',r'\btxn\s*date\s*(?:&|and)\s*time\b',r'\btransaction\s*details\s*comment.*payment\s*method\b',
-	r'\bdate\s*day\s*/\s*night\b',r'\btransaction\s*date\b',r'\btransaction\s*remarks\b',r'\bdeposit\s*amt.*inr\b',r'\bwithdrawal\s*amt\s*\(?inr\)?\b'
+	r'\bdate\s*day\s*/\s*night\b',r'\btransaction\s*date\b',r'\btransaction\s*remarks\b',r'\bdeposit\s*amt.*inr\b',r'\bwithdrawal\s*amt\s*\(?inr\)?\b',
+	
 	]
 
 
@@ -144,7 +145,7 @@ def detect_header_row(df_raw):
 		]
 
 		# Must have enough non-numeric cells
-		if len(non_numeric) < len(row) // 2:
+		if len(non_numeric) < 2:
 			continue
 
 		# Count fuzzy header matches
@@ -178,6 +179,7 @@ def is_partial_row(row):
 		and pd.notnull(row[col]) and str(row[col]).strip()
 		for col in row.index
 	)
+	
 
 	return  not has_amount and has_narration
 
@@ -508,13 +510,13 @@ def clean_debit_credit(df):
 	#Detect already separated debit & credit columns
 	# --------------------------------------------------
 	has_debit_col = any(
-		col in ['debit', 'debits', 'withdrawal', 'dr', 'dr amount']
+		col in ['debit', 'debits', 'withdrawal', 'dr', 'dr amount', 'withdrawals']
 		for col in cols_lower
 	)
 
 	# Detect separate Credit column
 	has_credit_col = any(
-		col in ['credit', 'credits', 'deposit', 'cr', 'cr amount']
+		col in ['credit', 'credits', 'deposit', 'cr', 'cr amount', 'deposits','cramount']
 		for col in cols_lower
 	)
 
@@ -545,11 +547,11 @@ def split_drcr_from_amount_column(df):
 	Withdrawal(Dr)/ Deposit(Cr)
 	"""
 
-	#  If separate withdraw & deposit columns exist → skip
-	separate_debit = any(re.search(r'withdraw', c, re.I) for c in df.columns)
-	separate_credit = any(re.search(r'deposit', c, re.I) for c in df.columns)
+	withdraw_cols = [c for c in df.columns if re.search(r'withdraw', c, re.I)]
+	deposit_cols = [c for c in df.columns if re.search(r'deposit', c, re.I)]
 
-	if separate_debit and separate_credit:
+	# If both exist AND they are different columns → skip split
+	if withdraw_cols and deposit_cols and withdraw_cols[0] != deposit_cols[0]:
 		return df
 
 	# Detect unified amount column
@@ -584,7 +586,6 @@ def split_drcr_from_amount_column(df):
 	df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
 	df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce')
 	
-
 	return df
 
 
@@ -1707,6 +1708,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\Admin\Downloads\MINI BALAN_1773050297480.csv"
-	output_csv = r"C:\Users\Admin\Downloads\rMINI BALAN_1773050297480.csv"
+	input_csv = r"C:\metis\excel_cleaning\input\SHEEBA_1773124115613.csv"
+	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\SHEEBA_1773124115613_cleaned.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
