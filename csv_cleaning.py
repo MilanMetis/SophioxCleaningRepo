@@ -26,7 +26,8 @@ HEADER_REGEX = [
 	r'\bdate|post\s*date|value\s*date\b',r'\btran(?:saction)?\s*date\b',r'\brunning\s*bal(?:ance)?\b',
 	r'\bcheque|chq|ref(erence)?\b',r'\bbook\s*bal(?:ance)?\b',r'\bdat\s*value\b',
 	r'\bdate\s*(?:&|and)\s*time\b',r'\btxn\s*date\s*(?:&|and)\s*time\b',r'\btransaction\s*details\s*comment.*payment\s*method\b',
-	r'\bdate\s*day\s*/\s*night\b',r'\btransaction\s*date\b',r'\btransaction\s*remarks\b',r'\bdeposit\s*amt.*inr\b',r'\bwithdrawal\s*amt\s*\(?inr\)?\b'
+	r'\bdate\s*day\s*/\s*night\b',r'\btransaction\s*date\b',r'\btransaction\s*remarks\b',r'\bdeposit\s*amt.*inr\b',r'\bwithdrawal\s*amt\s*\(?inr\)?\b',
+	
 	]
 
 
@@ -144,7 +145,7 @@ def detect_header_row(df_raw):
 		]
 
 		# Must have enough non-numeric cells
-		if len(non_numeric) < len(row) // 2:
+		if len(non_numeric) < 2:
 			continue
 
 		# Count fuzzy header matches
@@ -178,6 +179,7 @@ def is_partial_row(row):
 		and pd.notnull(row[col]) and str(row[col]).strip()
 		for col in row.index
 	)
+	
 
 	return  not has_amount and has_narration
 
@@ -508,13 +510,13 @@ def clean_debit_credit(df):
 	#Detect already separated debit & credit columns
 	# --------------------------------------------------
 	has_debit_col = any(
-		col in ['debit', 'debits', 'withdrawal', 'dr', 'dr amount']
+		col in ['debit', 'debits', 'withdrawal', 'dr', 'dr amount', 'withdrawals']
 		for col in cols_lower
 	)
 
 	# Detect separate Credit column
 	has_credit_col = any(
-		col in ['credit', 'credits', 'deposit', 'cr', 'cr amount']
+		col in ['credit', 'credits', 'deposit', 'cr', 'cr amount', 'deposits','cramount']
 		for col in cols_lower
 	)
 
@@ -527,12 +529,10 @@ def clean_debit_credit(df):
 		re.fullmatch(r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|cr/dr|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit)', col, flags=re.IGNORECASE)
 		for col in df.columns
 	) or any(col.lower() in ['type', 'txn type', 'transaction type', 'cr/dr', 'amount'] for col in df.columns)
-	print("DR/CR columns detected:",has_drcr)
 
 	has_mixed_amount = any(
 		re.search(r'withdrawal\s*\(?\s*dr\s*\)?\s*[/|\\-]\s*deposit\s*\(?\s*cr\s*\)?|debit.*credit|dr.*cr|amount', col, re.IGNORECASE) for col in df.columns
 	)
-	print("Mixed amount columns detected:", has_mixed_amount)
 	if has_drcr:
 		df = parse_debit_credit_split_safe(df)
 	elif has_mixed_amount:
@@ -547,11 +547,11 @@ def split_drcr_from_amount_column(df):
 	Withdrawal(Dr)/ Deposit(Cr)
 	"""
 
-	#  If separate withdraw & deposit columns exist → skip
-	separate_debit = any(re.search(r'withdraw', c, re.I) for c in df.columns)
-	separate_credit = any(re.search(r'deposit', c, re.I) for c in df.columns)
+	withdraw_cols = [c for c in df.columns if re.search(r'withdraw', c, re.I)]
+	deposit_cols = [c for c in df.columns if re.search(r'deposit', c, re.I)]
 
-	if separate_debit and separate_credit:
+	# If both exist AND they are different columns → skip split
+	if withdraw_cols and deposit_cols and withdraw_cols[0] != deposit_cols[0]:
 		return df
 
 	# Detect unified amount column
@@ -586,8 +586,6 @@ def split_drcr_from_amount_column(df):
 	df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
 	df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce')
 	
-	print(df['Credits'])
-
 	return df
 
 
@@ -765,18 +763,19 @@ def normalize_headers(df):
 	Normalize column headers to standard names
 	"""
 	headers = {
-		"XN Date": {"Date(ValueDate)","TransactionDate &Time","Tran Date","GL. Date","Date Day/Night","TransactionDate","TxnDate& Time","DAT VALUE", "Date(Value Date","Date& Time", "Post Date", "PostDate","Txn Posted Date", "TRANSACTION DATE", "Tran Date", "TranDate","XN Date", "Date", "Transaction date", "Txn Date", "Post date","ate", "DATE", "Transaction Date", "TRAN DATE", "TRANDATE","Value Date","Transactio n Date"},
+		"XN Date": {"Date(ValueDate)","Date","TransactionDate &Time","Tran Date","GL. Date","Date Day/Night","TransactionDate","TxnDate& Time","DAT VALUE", "Date(Value Date","Date& Time", "Post Date", "PostDate","Txn Posted Date", "TRANSACTION DATE", "Tran Date", "TranDate","XN Date", "Transaction date", "Txn Date", "Post date","ate", "DATE", "Transaction Date", "TRAN DATE", "TRANDATE","Value Date","Transactio n Date"},
 		"Value Date": {"Value Date", "VAL DATE", "Val Date", "VALUE DT","ValueDate", "VALDATE"},
 		"Cheque No": {"Cheque/Refer enceNo","Cheque.No./Ref.No", "Cheq No ue", "CHQ/REFNO.","CHEQUE/REFERENCE#", "ChequeNo.", "Chq.No", "Cheque No","Chq./ref.no", "Ref No", "Cheque number", "Ref no./cheque no.","Chq.no", "Chq No", "CHQ.NO.", "CHQ NO", "Cheque No.","Cheque Number", "Chq./Ref.No", "Chq.No."," Ref No./Cheque No.", "CHQ.NO", "Cnq.No.","Chq/Ref number", "Chq/Ref No"},
 		"Narration": {"TransactionReference","RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks","TransactionParticulars"},
 		"Credits": {"Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
 		"Debits": {"Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
-		"Balance": {"TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance"}
+		"Balance": {"TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance","Total Amount Dr/Cr"}
 	}
 
 	HEADER_REGEX = {
 		"XN Date": [
 			r'\btxn\s*d-ate\b',
+			r'\bdate\b',
 			r'\btran\s*date\b',
 			r'\bpost\s*date\b',r'\bg\s*\.?\s*l\s*\.?\s*d\s*a\s*t\s*e\b',
 			r'\btransaction\s*date\b',
@@ -1705,6 +1704,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"C:\metis\excel_cleaning\set_1_to_5_output\eval_dir\output\kotak_p5\kotak_p5.csv"
-	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\kotak_p5_cleaned.csv"
+	input_csv = r"C:\metis\excel_cleaning\input\SHEEBA_1773124115613.csv"
+	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\SHEEBA_1773124115613_cleaned.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
