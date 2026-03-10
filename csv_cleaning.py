@@ -1339,16 +1339,20 @@ def clean_bank_statement(df, file_path=None, logging=True):
 			"YOUR OPENING", "BALANCE ON","PageTotal",
 			"LOSINGBALANCE", "RROUGHTFOROWARD", "BROOGHTFORWARD",
 			"TRANSACTIONTOTAI", "TRANSACTION TOTAL DRICR",
-			"BALANCE CARRIED", "BALANCE BROUGHT","Cumulative Totals","b/f.."
+			"BALANCE CARRIED", "BALANCE BROUGHT","Cumulative Totals","b/f..","ance"
 		]
 
 		# Clean and lowercase once
 		phrases_clean = [p.lower().strip() for p in METADATA_PHRASES]
 
 		
+		# Combined regex to catch:
+		# - "brought forward" 
+		# - "opening balance" 
+		# - "closing balance" 
 		USELESS_TXN_REGEX = re.compile(
-		r'\bbrought\s+forward\b|\bopening\s*balance\b',
-		re.IGNORECASE
+			r'\bbrought\s*forward\b|\bopening\s*balance\b|\bclosing\s*balance\b',
+			re.IGNORECASE
 		)
 
 		def is_metadata_row(row):
@@ -1365,10 +1369,10 @@ def clean_bank_statement(df, file_path=None, logging=True):
 					if len(phrase) < 4 and phrase not in ["b/f", "c/f", "bf", "cf"]:
 						continue
 					ratio = rfuzz.ratio(cell_lower, phrase)
-					if ratio >= 75:
+					if ratio >= 70:
 						return True
 
-				# 2. Regex match for useless transaction patterns
+				# 2. Regex match for useless transaction patterns+	
 				if USELESS_TXN_REGEX.search(cell):
 					return True
 
@@ -1706,6 +1710,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"C:\metis\excel_cleaning\set_1_to_5_output\eval_dir\output\kotak_p5\kotak_p5.csv"
-	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\kotak_p5_cleaned.csv"
+	input_csv = r"C:\Users\Admin\Downloads\MINI BALAN_1773050297480.csv"
+	output_csv = r"C:\Users\Admin\Downloads\rMINI BALAN_1773050297480.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
