@@ -1546,7 +1546,7 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		print(f"Debug mode: {debug}")
 		
 		df_raw = pd.read_csv(file_path, header=None)
-		df_raw = run_step("clean_debit_credit",clean_by_majority_structure,df_raw)
+		# df_raw = run_step("clean_by_majority_structure",clean_by_majority_structure,df_raw)
 		header_row = detect_header_row(df_raw)
 		
 		if header_row is not None:
