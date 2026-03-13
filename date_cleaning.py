@@ -671,7 +671,7 @@ def date_correction(df: pd.DataFrame) -> Tuple[pd.DataFrame, str]:
             if 'value' in col_lower and 'date' in col_lower and col != 'XN Date':
                 value_date_col = col
                 break
-        
+        # print(f"Value Date column found: {value_date_col}")
         # Step 1: Parse all XN Dates first
         parsed_dates = []
         for idx in range(len(df)):
@@ -1097,7 +1097,7 @@ def fix_chronological_year_issues(df: pd.DataFrame) -> Tuple[pd.DataFrame, int]:
             if 'value' in col_lower and 'date' in col_lower and col != 'XN Date':
                 value_date_col = col
                 break
-        
+        # print(f"Value Date column found: {value_date_col}")
         # Get chronological pattern
         valid_dates_info = []
         for i, date_str in enumerate(corrected_dates):
