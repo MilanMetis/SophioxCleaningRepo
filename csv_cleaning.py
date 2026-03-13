@@ -145,8 +145,9 @@ def detect_header_row(df_raw):
 		]
 
 		# Must have enough non-numeric cells
-		if len(non_numeric) < 2:
+		if len(non_numeric) < len(row) // 2:
 			continue
+
 
 		# Count fuzzy header matches
 		header_hits = sum(
@@ -525,10 +526,21 @@ def clean_debit_credit(df):
 		print("Already split Debit & Credit columns detected.")
 		return df
 
-	has_drcr = any(
-		re.fullmatch(r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|cr/dr|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit)', col, flags=re.IGNORECASE)
+	regex_drcr = any(
+		re.fullmatch(
+			r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|cr/dr|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit)',
+			col,
+			flags=re.IGNORECASE
+		)
 		for col in df.columns
-	) or any(col.lower() in ['type', 'txn type', 'transaction type', 'cr/dr', 'amount'] for col in df.columns)
+	)
+
+	type_drcr = any(
+		col.lower() in ['type', 'txn type', 'transaction type', 'cr/dr','amount']
+		for col in df.columns
+	)
+
+	has_drcr = regex_drcr and type_drcr
 
 	has_mixed_amount = any(
 		re.search(r'withdrawal\s*\(?\s*dr\s*\)?\s*[/|\\-]\s*deposit\s*\(?\s*cr\s*\)?|debit.*credit|dr.*cr|amount', col, re.IGNORECASE) for col in df.columns
@@ -571,9 +583,9 @@ def split_drcr_from_amount_column(df):
 		amt = extract_amount(text)
 
 		# STRICT detection – no guessing
-		if re.search(r'\(\s*dr\s*\)|\bdr\b', text, re.I):
+		if re.search(r'\(\s*dr\s*\)|\bdr\b|dr', text, re.I):
 			return amt, ""
-		elif re.search(r'\(\s*cr\s*\)|\bcr\b', text, re.I):
+		elif re.search(r'\(\s*cr\s*\)|\bcr\b|cr', text, re.I):
 			return "", amt
 		else:
 			# neither DR nor CR → leave blank
@@ -796,7 +808,6 @@ def normalize_headers(df):
 		"Balance": [r'\bbalance\b',r'\btotal\s*a\s*m\s*o\s*u\s*n\s*t\b',r'\bbalance\s*\(inr\)\b' r'\bclosing\b', r'\btransaction\s*details\s*comment.*payment\s*method\b',
 					r'\bavailable\b',r'\bbook\s*bal(?:ance)?\b',r'\brunning\s*bal(?:ance)?\b']
 	}
-
 	drcr_already_split = {"Debits", "Credits"}.issubset(df.columns)
 
 	# 🔥 Build fuzzy support
@@ -831,10 +842,10 @@ def normalize_headers(df):
 
 		mapped = None
 
-		#  Exact Match
+				# 1️⃣ Exact dictionary match
 		for std, variants in headers.items():
 
-			if drcr_already_split and std in {"Debits","Credits"}:
+			if drcr_already_split and std in {"Debits", "Credits"}:
 				continue
 
 			for v in variants:
@@ -848,7 +859,8 @@ def normalize_headers(df):
 			if mapped:
 				break
 
-		#  Regex Match
+
+		# 2️⃣ Regex match (ONLY if dictionary failed)
 		if not mapped:
 			for std, patterns in HEADER_REGEX.items():
 
@@ -863,8 +875,10 @@ def normalize_headers(df):
 				if mapped:
 					break
 
-		#  Fuzzy Match
+
+		# 3️⃣ Fuzzy match (ONLY if regex failed)
 		if not mapped and all_possible_headers:
+
 			match = process.extractOne(
 				clean_col,
 				all_possible_headers,
@@ -873,10 +887,12 @@ def normalize_headers(df):
 
 			if match:
 				best_match, score = match
-				if score >= 80:
+
+				if score >= 90:
 					mapped = reverse_mapping[best_match]
 
-		#  Fallback
+
+		# 4️⃣ Fallback
 		if not mapped:
 			mapped = original_col
 
@@ -1704,6 +1720,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"C:\metis\excel_cleaning\input\SHEEBA_1773124115613.csv"
-	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\SHEEBA_1773124115613_cleaned.csv"
+	input_csv = r"C:\metis\excel_cleaning\set_1_to_5_output\eval_dir\output\icici_p6__Xc%qNnkoQ4DYwiM\icici_p6__Xc%qNnkoQ4DYwiM.csv"
+	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\icici_p6__Xc%qNnkoQ4DYwiM_cleaned.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
