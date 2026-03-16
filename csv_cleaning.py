@@ -7,6 +7,7 @@ from date_cleaning import process_all_dates
 import os
 from datetime import datetime
 from rapidfuzz import fuzz as rfuzz
+from io import StringIO
 
 # Create check_date directory at module load
 CHECK_DATE_DIR = "check_date"
@@ -52,72 +53,97 @@ def fuzzy_regex_match(text, patterns, threshold=0.75):
 	return False
 
 def clean_by_majority_structure(df, max_gap_cap=4):
-	"""
-	Cleans dataframe based on majority row structure.
-	
-	Parameters:
-		df (pd.DataFrame): Input dataframe
-		max_gap_cap (int): Maximum allowed NaN gap cap (default=4)
+	try:
+		def max_nan_gap(series):
+			max_gap = 0
+			count = 0
+			found_value = False
+
+			for val in series.values:
+				if not pd.isna(val):
+					if found_value:
+						max_gap = max(max_gap, count)
+					count = 0
+					found_value = True
+				else:
+					if found_value:
+						count += 1
+			return max_gap
+
+		results = {col: max_nan_gap(df[col]) for col in df.columns}
+		max_gap = max(results.values())
+
+		# Cap max_gap
+		if max_gap > max_gap_cap:
+			max_gap = max_gap_cap
+
+		df = df.replace("", np.nan)
+		df_copy = df.copy()
+
+		original_cols = list(df_copy.columns)
+		col_positions = {col: idx for idx, col in enumerate(original_cols)}
+
+		# Step 3: Find last non-null position (right to left)
+		def last_valid_position(row,nan_threshold):
+			gap=nan_threshold
+			for col in reversed(original_cols):
+				if not pd.isna(row[col]):
+					gap=nan_threshold
+					return col_positions[col]
+				elif pd.isna(row[col]) and nan_threshold > 0:
+					if pd.isna(row[col]): #and pd.isna(row[row.index[0]])
+						gap -= 1
+						return col_positions[col] 
+			return np.nan  # temporary, will fix later
+
+		# Identify the last data-containing column for every row
+		# df_copy['_last_pos'] = df_copy.apply(
+		# lambda row: last_valid_position(row, max_gap),
+		# axis=1
+		# )
+
+		majority_pos = df_copy["_last_pos"].mode()[0]
+		df_copy["_last_pos"] = df_copy["_last_pos"].fillna(majority_pos)
+
+		csv_outputs = {}
+
+		groups = list(df_copy.groupby("_last_pos"))
+
+		# Sort groups by dataframe length (descending)
+		groups_sorted = sorted(groups, key=lambda x: len(x[1]), reverse=True)
+
+		for pos, group in groups_sorted:
+			group_df = group.drop(columns=["_last_pos"]).reset_index(drop=True)
+
+			csv_buffer = StringIO()
+			group_df.to_csv(csv_buffer, index=False)
+
+			csv_outputs[f"shape_{int(pos)}"] = csv_buffer.getvalue()
+
+			# -------- Save different structures --------
+		# with pd.ExcelWriter("output.xlsx", engine="xlsxwriter") as writer:
+
+		# 	for pos, group in df_copy.groupby("_last_pos"):
+		# 		sheet_name = f"shape_{int(pos)}"
+		# 		group.drop(columns=["_last_pos"]).reset_index(drop=True).to_excel(
+		# 			writer, sheet_name=sheet_name, index=False
+		# 		)
+
+		# majority cleaned dataframe
+		df_clean = df_copy[df_copy["_last_pos"] == majority_pos].copy()
+		df_clean.drop(columns=["_last_pos"], inplace=True)
+		df_clean.reset_index(drop=True, inplace=True)
+
+		return df_clean, csv_outputs
+
+	except Exception as e:
+		csv_outputs = {}
+		csv_buffer = StringIO()
+		df.to_csv(csv_buffer, index=False)
+
+		csv_outputs[f"defaultshape"] = csv_buffer.getvalue()
 		
-	Returns:
-		pd.DataFrame: Cleaned dataframe
-	"""
-	
-	# -------- 1️⃣ Calculate max vertical NaN gap per column --------
-	def max_nan_gap(series):
-		max_gap = 0
-		count = 0
-		found_value = False
-		values = series.values
-
-		for val in values:
-			if not pd.isna(val):
-				if found_value:
-					max_gap = max(max_gap, count)
-				count = 0
-				found_value = True
-			else:
-				if found_value:
-					count += 1
-
-		return max_gap
-
-	results = {col: max_nan_gap(df[col]) for col in df.columns}
-	max_gap = max(results.values())
-
-	# Cap max_gap
-	if max_gap > max_gap_cap:
-		max_gap = max_gap_cap
-
-	# -------- 2️⃣ Clean dataframe by majority shape --------
-	df = df.replace("", np.nan)
-	df_copy = df.copy()
-
-	original_cols = list(df_copy.columns)
-	col_positions = {col: idx for idx, col in enumerate(original_cols)}
-
-	def last_valid_position(row, nan_threshold):
-		for col in reversed(original_cols):
-			if not pd.isna(row[col]):
-				return col_positions[col]
-		return np.nan
-
-	df_copy['_last_pos'] = df_copy.apply(
-		lambda row: last_valid_position(row, max_gap),
-		axis=1
-	)
-
-	# Fill empty rows with majority structure
-	majority_pos = df_copy['_last_pos'].mode()[0]
-	df_copy['_last_pos'] = df_copy['_last_pos'].fillna(majority_pos)
-
-	# Keep only majority structure rows
-	df_clean = df_copy[df_copy['_last_pos'] == majority_pos].copy()
-	df_clean.drop(columns=['_last_pos'], inplace=True)
-	df_clean.reset_index(drop=True, inplace=True)
-
-	return df_clean
-
+		return df , csv_outputs
 
 # HEADER ROW DETECTOR
 def detect_header_row(df_raw):
@@ -1566,7 +1592,20 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		
 		df_raw = pd.read_csv(file_path, header=None)
 		# df_raw = run_step("clean_by_majority_structure",clean_by_majority_structure,df_raw)
-		header_row = detect_header_row(df_raw)
+		clean_df, csv_files = clean_by_majority_structure(df_raw)
+
+		header_row = None
+
+		for name, csv_data  in csv_files.items():
+			try:
+				df_raw = pd.read_csv(StringIO(csv_data))
+
+				header_row = detect_header_row(df_raw)
+
+				if header_row is not None:
+					break
+			except Exception as e:
+				print(f"{name} failed: {e}")
 		
 		if header_row is not None:
 			df_raw = df_raw.iloc[header_row:]
@@ -1727,6 +1766,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"C:\metis\excel_cleaning\set_1_to_5_output\eval_dir\output\icici_p6__Xc%qNnkoQ4DYwiM\icici_p6__Xc%qNnkoQ4DYwiM.csv"
-	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\icici_p6__Xc%qNnkoQ4DYwiM_cleaned.csv"
+	input_csv = r"D:\Sophiox Cleaning Code\3NNK122912_BANK_STMT_R2_1773017987152.csv"
+	output_csv = r"3NNK122912_BANK_STMT_R2_1773017987152.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
