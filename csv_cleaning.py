@@ -562,7 +562,7 @@ def clean_debit_credit(df):
 	)
 
 	type_drcr = any(
-		col.lower() in ['type', 'txn type', 'transaction type', 'cr/dr','amount']
+		col.lower() in ['type', 'txn type', 'transaction type', 'cr/dr', 'amount', 'amount(inr)']
 		for col in df.columns
 	)
 
@@ -740,11 +740,13 @@ def parse_debit_credit_split_safe(df):
 			lambda r: r['Amount'] if r['AMOUNT_DRCR'] == 'DR' else None,
 			axis=1
 		)
+		
 
 		df['Credits'] = df.apply(
 			lambda r: r['Amount'] if r['AMOUNT_DRCR'] == 'CR' else None,
 			axis=1
 		)
+		
 
 		df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
 		df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce')
@@ -802,12 +804,12 @@ def normalize_headers(df):
 	"""
 	headers = {
 		"Value Date": {"Value Date", "VAL DATE", "Val Date", "VALUE DT","ValueDate", "VALDATE"},
-		"XN Date": {"Date(ValueDate)","Date","Txn Posted Date","TransactionDate &Time","Tran Date","GL. Date","Date Day/Night","TransactionDate","TxnDate& Time","DAT VALUE", "Date(Value Date","Date& Time", "Post Date", "PostDate", "TRANSACTION DATE", "Tran Date", "TranDate","XN Date", "Transaction date", "Txn Date", "Post date","ate", "DATE", "Transaction Date", "TRAN DATE", "TRANDATE","Transactio n Date"},
+		"XN Date": {"Post.Dt","Date(ValueDate)","Date","Txn Posted Date","TransactionDate &Time","Tran Date","GL. Date","Date Day/Night","TransactionDate","TxnDate& Time","DAT VALUE", "Date(Value Date","Date& Time", "Post Date", "PostDate", "TRANSACTION DATE", "Tran Date", "TranDate","XN Date", "Transaction date", "Txn Date", "Post date","ate", "DATE", "Transaction Date", "TRAN DATE", "TRANDATE","Transactio n Date"},
 		"Cheque No": {"Cheque/Refer enceNo","Cheque.No./Ref.No", "Cheq No ue", "CHQ/REFNO.","CHEQUE/REFERENCE#", "ChequeNo.", "Chq.No", "Cheque No","Chq./ref.no", "Ref No", "Cheque number", "Ref no./cheque no.","Chq.no", "Chq No", "CHQ.NO.", "CHQ NO", "Cheque No.","Cheque Number", "Chq./Ref.No", "Chq.No."," Ref No./Cheque No.", "CHQ.NO", "Cnq.No.","Chq/Ref number", "Chq/Ref No"},
-		"Narration": {"TransactionReference","RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks","TransactionParticulars"},
-		"Credits": {"Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
-		"Debits": {"Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
-		"Balance": {"TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance","Total Amount Dr/Cr"}
+		"Narration": {"Transaction","TransactionReference","RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks","TransactionParticulars"},
+		"Credits": {"CrAmount","Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
+		"Debits": {"Dr Amount","Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
+		"Balance": {"Amount","TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "Batance","BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance","C losingBalance INR"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance","Total Amount Dr/Cr"}
 	}
 
 	HEADER_REGEX = {
@@ -1382,7 +1384,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 			"YOUR OPENING", "BALANCE ON","PageTotal",
 			"LOSINGBALANCE", "RROUGHTFOROWARD", "BROOGHTFORWARD",
 			"TRANSACTIONTOTAI", "TRANSACTION TOTAL DRICR",
-			"BALANCE CARRIED", "BALANCE BROUGHT","Cumulative Totals","b/f..","ance"
+			"BALANCE CARRIED", "BALANCE BROUGHT","Cumulative Totals","b/f..","ance","TotalNumberofTransactions","Turnover"
 		]
 
 		# Clean and lowercase once
@@ -1412,7 +1414,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 					if len(phrase) < 4 and phrase not in ["b/f", "c/f", "bf", "cf"]:
 						continue
 					ratio = rfuzz.ratio(cell_lower, phrase)
-					if ratio >= 70:
+					if ratio >= 75:
 						return True
 
 				# 2. Regex match for useless transaction patterns+	
@@ -1433,6 +1435,8 @@ def clean_bank_statement(df, file_path=None, logging=True):
 				# Format a concise representation: index and first few non-empty values
 				row_preview = " | ".join(str(v)[:50] for v in row if pd.notna(v) and str(v).strip())
 				# print(f"  Row {idx}: {row_preview}")
+				narration = row.get("Narration", "")  # safe access
+				print(f"Removed Row {idx} | Narration: {narration}")
 		else:
 			print("No metadata rows removed.")
 		df = df[~mask]
@@ -1766,6 +1770,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"D:\Sophiox Cleaning Code\3NNK122912_BANK_STMT_R2_1773017987152.csv"
-	output_csv = r"3NNK122912_BANK_STMT_R2_1773017987152.csv"
+	input_csv = r"C:\metis\UTIB\eval_dir\output\1158\1158.csv"
+	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\1158_cleaned.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
