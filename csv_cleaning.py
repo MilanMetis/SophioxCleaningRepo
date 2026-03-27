@@ -1436,7 +1436,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 				row_preview = " | ".join(str(v)[:50] for v in row if pd.notna(v) and str(v).strip())
 				# print(f"  Row {idx}: {row_preview}")
 				narration = row.get("Narration", "")  # safe access
-				print(f"Removed Row {idx} | Narration: {narration}")
+				# print(f"Removed Row {idx} | Narration: {narration}")
 		else:
 			print("No metadata rows removed.")
 		df = df[~mask]
@@ -1558,6 +1558,32 @@ def clean_bank_statement(df, file_path=None, logging=True):
 
 		df = df[[col for col in required_columns if col in df.columns]]
 		return df
+	
+	def step_remove_consecutive_duplicates(df):
+		"""
+		Remove only consecutive duplicate rows (OCR duplicate issue).
+		Keeps the first occurrence and removes immediate next identical row.
+		"""
+
+		def rows_equal(row1, row2):
+			for col in df.columns:
+				v1 = str(row1[col]).strip()
+				v2 = str(row2[col]).strip()
+				if v1 != v2:
+					return False
+			return True
+
+		rows_to_drop = []
+
+		for i in range(1, len(df)):
+			if rows_equal(df.iloc[i], df.iloc[i - 1]):
+				rows_to_drop.append(i)
+
+		if rows_to_drop:
+			print(f"Removed {len(rows_to_drop)} consecutive duplicate row(s)")
+		
+		df = df.drop(index=df.index[rows_to_drop]).reset_index(drop=True)
+		return df
 
 	# Run all cleaning steps in sequence
 	df = run_step("clean_debit_credit", step_clean_debit_credit, df)
@@ -1580,6 +1606,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 	
 	df = run_step("cleanup_columns", step_cleanup_columns, df)
 	df = run_step("ensure_required_columns", step_ensure_required_columns, df)
+	df = run_step("remove_consecutive_duplicates", step_remove_consecutive_duplicates, df)
 	
 
 	return df
@@ -1770,6 +1797,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"C:\metis\UTIB\eval_dir\output\1158\1158.csv"
-	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\1158_cleaned.csv"
+	input_csv = r"C:\Users\Admin\Documents\Metis\UTIB\eval_dir\output\917\917.csv"
+	output_csv = r"C:\Users\Admin\Documents\Metis\OCR Cleaning\Outputs\917_cleaned.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
