@@ -1315,6 +1315,46 @@ def resolve_debit_credit_using_balance(df):
 
 	return df
 
+def adjust_debit_sign_based_on_balance(df):
+    """
+    Adjust sign of debit amounts based on balance movement.
+    For each row i (starting from index 1):
+        if Balance[i] > Balance[i-1] and Debits[i] < 0, then set Debits[i] = abs(Debits[i]).
+    Also ensure Credits are positive (remove any negative signs).
+    """
+    # Create a copy to avoid SettingWithCopyWarning
+    df = df.copy()
+    
+    # Ensure columns are numeric
+    for col in ['Debits', 'Credits', 'Balance']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # Make credits positive (absolute value)
+    if 'Credits' in df.columns:
+        df['Credits'] = df['Credits'].abs()
+    
+    # Adjust debit signs based on balance movement
+    if 'Debits' in df.columns and 'Balance' in df.columns:
+        # Convert to list to avoid read-only array issue
+        balances = df['Balance'].tolist()
+        debits = df['Debits'].tolist()
+        
+        # Iterate using index positions
+        for i in range(1, len(balances)):
+            # Skip if any of the values are NaN
+            if pd.isna(balances[i-1]) or pd.isna(balances[i]) or pd.isna(debits[i]):
+                continue
+            # If balance increased and debit is negative, flip to positive
+            if balances[i] > balances[i-1] and debits[i] < 0:
+                debits[i] = abs(debits[i])
+        
+        # Assign back
+        df['Debits'] = debits
+    
+    return df
+
+
 
 def run_step(step_name, func, df):
 	"""
@@ -1640,6 +1680,27 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 					cleaned_df['Balance'] = df_with_diff['Balance_Adjusted']
 					# print("✓ Updated cleaned file with adjusted balances.")
 				
+				# ========== NEW: Adjust debit signs based on balance ==========
+				cleaned_df = adjust_debit_sign_based_on_balance(cleaned_df)
+				# ==============================================================
+				
+				# Update corrected columns to reflect sign changes (if they exist)
+				if 'Debits_Corrected' in cleaned_df.columns:
+					cleaned_df['Debits_Corrected'] = cleaned_df['Debits']
+				if 'Credits_Corrected' in cleaned_df.columns:
+					cleaned_df['Credits_Corrected'] = cleaned_df['Credits']
+				if 'Balance_Corrected' in cleaned_df.columns:
+					cleaned_df['Balance_Corrected'] = cleaned_df['Balance']
+				
+				# Re-run the balance verification with the corrected signs
+				df_with_diff, all_correct, adjusted = calculate_difference_and_verify(cleaned_df)
+				
+				# Update cleaned_df with the final adjusted balances (if any)
+				if adjusted and 'Balance_Adjusted' in df_with_diff.columns:
+					if 'Balance_Corrected' in cleaned_df.columns:
+						cleaned_df['Balance_Corrected'] = df_with_diff['Balance_Adjusted']
+					cleaned_df['Balance'] = df_with_diff['Balance_Adjusted']
+				
 				# Save the main cleaned file (without debug columns)
 				required_cols = ['XN Date', 'Cheque No', 'Narration', 'Debits', 'Credits', 'Balance']
 				available_cols = [col for col in required_cols if col in cleaned_df.columns]
@@ -1769,7 +1830,13 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		traceback.print_exc()
 
 
+
+
+
+
+
+
 if __name__ == "__main__":
-	input_csv = r"C:\metis\UTIB\eval_dir\output\1158\1158.csv"
-	output_csv = r"C:\metis\excel_cleaning\SBI_OUTPUT\1158_cleaned.csv"
+	input_csv = r"C:\Users\kayro\Downloads\1529.csv"
+	output_csv = r"C:\Users\kayro\Downloads\r1529.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
