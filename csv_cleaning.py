@@ -392,6 +392,7 @@ def parse_balance(value):
 		return ""
 
 	# Detect DR / CR (balance-specific)
+	has_minus = '-' in text
 	is_dr = "DR" in text
 	is_cr = "CR" in text
 
@@ -429,7 +430,9 @@ def parse_balance(value):
 		amount = float(raw)
 
 		# Balance sign logic (ONLY here)
-		if is_dr:
+		if has_minus:
+			return -abs(amount)   # Explicit minus takes priority
+		elif is_dr:
 			return -amount
 		else:
 			# CR or unsigned balance
@@ -554,7 +557,7 @@ def clean_debit_credit(df):
 
 	regex_drcr = any(
 		re.fullmatch(
-			r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|cr/dr|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit)',
+			r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|cr/dr|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit|type)',
 			col,
 			flags=re.IGNORECASE
 		)
@@ -568,9 +571,11 @@ def clean_debit_credit(df):
 
 	has_drcr = regex_drcr and type_drcr
 
+
 	has_mixed_amount = any(
 		re.search(r'withdrawal\s*\(?\s*dr\s*\)?\s*[/|\\-]\s*deposit\s*\(?\s*cr\s*\)?|debit.*credit|dr.*cr|amount', col, re.IGNORECASE) for col in df.columns
 	)
+
 	if has_drcr:
 		df = parse_debit_credit_split_safe(df)
 	elif has_mixed_amount:
@@ -594,7 +599,7 @@ def split_drcr_from_amount_column(df):
 
 	# Detect unified amount column
 	amount_col = next(
-		(c for c in df.columns if re.search(r'withdrawal\s*\(dr\)\s*/\s*deposit\s*\(cr\)|amount|amt', c, re.I)),
+		(c for c in df.columns if re.search(r'withdrawal\s*\(dr\)\s*/\s*deposit\s*\(cr\)|amount|amt|withdrawal\s*\(?\s*dr\s*[/\\]?\s*deposit\s*\(?\s*cr\s*\)?', c, re.I)),
 		None
 	)
 	if not amount_col:
@@ -623,6 +628,7 @@ def split_drcr_from_amount_column(df):
 
 	df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
 	df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce')
+
 	
 	return df
 
@@ -751,7 +757,7 @@ def parse_debit_credit_split_safe(df):
 		df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
 		df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce')
 		
-		
+
 	return df
 
 def merge_balance_with_adjacent_type(df):
@@ -796,6 +802,7 @@ def merge_balance_with_adjacent_type(df):
 	mask = df['Balance'] != ''
 	df.loc[mask, 'Balance'] = df.loc[mask, 'Balance'] + df.loc[mask, next_col]
 
+
 	return df
 
 def normalize_headers(df):
@@ -808,7 +815,7 @@ def normalize_headers(df):
 		"Cheque No": {"Cheque/Refer enceNo","Cheque.No./Ref.No", "Cheq No ue", "CHQ/REFNO.","CHEQUE/REFERENCE#", "ChequeNo.", "Chq.No", "Cheque No","Chq./ref.no", "Ref No", "Cheque number", "Ref no./cheque no.","Chq.no", "Chq No", "CHQ.NO.", "CHQ NO", "Cheque No.","Cheque Number", "Chq./Ref.No", "Chq.No."," Ref No./Cheque No.", "CHQ.NO", "Cnq.No.","Chq/Ref number", "Chq/Ref No"},
 		"Narration": {"Transaction","TransactionReference","RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks","TransactionParticulars"},
 		"Credits": {"CrAmount","Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
-		"Debits": {"Dr Amount","Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
+		"Debits": {"W ithdrawals","Dr Amount","Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
 		"Balance": {"Amount","TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "Batance","BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance","C losingBalance INR"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance","Total Amount Dr/Cr"}
 	}
 
@@ -836,15 +843,19 @@ def normalize_headers(df):
 		"Balance": [r'\bbalance\b',r'\btotal\s*a\s*m\s*o\s*u\s*n\s*t\b',r'\bbalance\s*\(inr\)\b' r'\bclosing\b', r'\btransaction\s*details\s*comment.*payment\s*method\b',
 					r'\bavailable\b',r'\bbook\s*bal(?:ance)?\b',r'\brunning\s*bal(?:ance)?\b']
 	}
-	drcr_already_split = {"Debits", "Credits"}.issubset(df.columns)
+	standard_headers = set(headers.keys())
 
-	# 🔥 Build fuzzy support
+	existing_standard_cols = {
+		col.strip() for col in df.columns if col.strip() in standard_headers
+	}
+
+	# Build fuzzy support
 	all_possible_headers = []
 	reverse_mapping = {}
 
 	for std, variants in headers.items():
 
-		if drcr_already_split and std in {"Debits", "Credits"}:
+		if std in existing_standard_cols:
 			continue
 
 		for v in variants:
@@ -870,10 +881,10 @@ def normalize_headers(df):
 
 		mapped = None
 
-				# 1️⃣ Exact dictionary match
+				#  Exact dictionary match
 		for std, variants in headers.items():
 
-			if drcr_already_split and std in {"Debits", "Credits"}:
+			if std in existing_standard_cols:
 				continue
 
 			for v in variants:
@@ -888,11 +899,11 @@ def normalize_headers(df):
 				break
 
 
-		# 2️⃣ Regex match (ONLY if dictionary failed)
+		#  Regex match (ONLY if dictionary failed)
 		if not mapped:
 			for std, patterns in HEADER_REGEX.items():
 
-				if drcr_already_split and std in {"Debits","Credits"}:
+				if std in existing_standard_cols:
 					continue
 
 				for pat in patterns:
@@ -904,7 +915,7 @@ def normalize_headers(df):
 					break
 
 
-		# 3️⃣ Fuzzy match (ONLY if regex failed)
+		#  Fuzzy match (ONLY if regex failed)
 		if not mapped and all_possible_headers:
 
 			match = process.extractOne(
@@ -920,7 +931,7 @@ def normalize_headers(df):
 					mapped = reverse_mapping[best_match]
 
 
-		# 4️⃣ Fallback
+		#  Fallback
 		if not mapped:
 			mapped = original_col
 
@@ -1316,43 +1327,44 @@ def resolve_debit_credit_using_balance(df):
 	return df
 
 def adjust_debit_sign_based_on_balance(df):
-    """
-    Adjust sign of debit amounts based on balance movement.
-    For each row i (starting from index 1):
-        if Balance[i] > Balance[i-1] and Debits[i] < 0, then set Debits[i] = abs(Debits[i]).
-    Also ensure Credits are positive (remove any negative signs).
-    """
-    # Create a copy to avoid SettingWithCopyWarning
-    df = df.copy()
-    
-    # Ensure columns are numeric
-    for col in ['Debits', 'Credits', 'Balance']:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-    
-    # Make credits positive (absolute value)
-    if 'Credits' in df.columns:
-        df['Credits'] = df['Credits'].abs()
-    
-    # Adjust debit signs based on balance movement
-    if 'Debits' in df.columns and 'Balance' in df.columns:
-        # Convert to list to avoid read-only array issue
-        balances = df['Balance'].tolist()
-        debits = df['Debits'].tolist()
-        
-        # Iterate using index positions
-        for i in range(1, len(balances)):
-            # Skip if any of the values are NaN
-            if pd.isna(balances[i-1]) or pd.isna(balances[i]) or pd.isna(debits[i]):
-                continue
-            # If balance increased and debit is negative, flip to positive
-            if balances[i] > balances[i-1] and debits[i] < 0:
-                debits[i] = abs(debits[i])
-        
-        # Assign back
-        df['Debits'] = debits
-    
-    return df
+	"""
+	Adjust sign of debit amounts based on balance movement.
+	For each row i (starting from index 1):
+		if Balance[i] > Balance[i-1] and Debits[i] < 0, then set Debits[i] = abs(Debits[i]).
+	Also ensure Credits are positive (remove any negative signs).
+	"""
+	# Create a copy to avoid SettingWithCopyWarning
+	df = df.copy()
+	
+	# Ensure columns are numeric
+	for col in ['Debits', 'Credits', 'Balance']:
+		if col in df.columns:
+			df[col] = pd.to_numeric(df[col], errors='coerce')
+	
+	# Make credits positive (absolute value)
+	if 'Credits' in df.columns:
+		df['Credits'] = df['Credits'].abs()
+	
+	# Adjust debit signs based on balance movement
+	if 'Debits' in df.columns and 'Balance' in df.columns:
+		# Convert to list to avoid read-only array issue
+		balances = df['Balance'].tolist()
+		debits = df['Debits'].tolist()
+		
+		# Iterate using index positions
+		for i in range(1, len(balances)):
+			# Skip if any of the values are NaN
+			if pd.isna(balances[i-1]) or pd.isna(balances[i]) or pd.isna(debits[i]):
+				continue
+			# If balance increased and debit is negative, flip to positive
+			if balances[i] > balances[i-1] and debits[i] < 0:
+				debits[i] = abs(debits[i])
+		
+		# Assign back
+		df['Debits'] = debits
+	
+	return df
+
 
 
 
@@ -1624,6 +1636,13 @@ def clean_bank_statement(df, file_path=None, logging=True):
 		
 		df = df.drop(index=df.index[rows_to_drop]).reset_index(drop=True)
 		return df
+	
+	def remove_blank_rows(df):
+		return df[~(
+			(df['Narration'].isna() | (df['Narration'].str.strip() == '')) &
+			(df['Credits'].isna() | (df['Credits'].astype(str).str.strip() == '')) &
+			(df['Debits'].isna() | (df['Debits'].astype(str).str.strip() == ''))
+		)]
 
 	# Run all cleaning steps in sequence
 	df = run_step("clean_debit_credit", step_clean_debit_credit, df)
@@ -1635,8 +1654,8 @@ def clean_bank_statement(df, file_path=None, logging=True):
 	# Parse amounts FIRST (but save raw values)
 	df = run_step("parse_amounts", step_parse_amounts, df)
 	df = run_step("resolve_debit_credit_using_balance", step_resolve_drcr_balance, df)
+
 	df = run_step("remove_metadata_rows", step_remove_metadata_rows, df)
-	
 	# Add the new step for OCR correction (uses raw values saved in parse_amounts)
 	df = run_step("create_ocr_corrected_columns", step_create_ocr_corrected_columns, df)
 	
@@ -1646,7 +1665,10 @@ def clean_bank_statement(df, file_path=None, logging=True):
 	
 	df = run_step("cleanup_columns", step_cleanup_columns, df)
 	df = run_step("ensure_required_columns", step_ensure_required_columns, df)
+	
 	df = run_step("remove_consecutive_duplicates", step_remove_consecutive_duplicates, df)
+
+	df = remove_blank_rows(df)
 	
 
 	return df
@@ -1857,13 +1879,7 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		traceback.print_exc()
 
 
-
-
-
-
-
-
 if __name__ == "__main__":
-	input_csv = r"C:\Users\Admin\Documents\Metis\UTIB\eval_dir\output\917\917.csv"
-	output_csv = r"C:\Users\Admin\Documents\Metis\OCR Cleaning\Outputs\917_cleaned.csv"
+	input_csv = r"C:\Users\Admin\Documents\Metis\all_banks\eval_dir\output\1311\1311.csv"
+	output_csv = r"C:\Users\Admin\Documents\Metis\OCR Cleaning\Outputs\1311_cleaned.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
