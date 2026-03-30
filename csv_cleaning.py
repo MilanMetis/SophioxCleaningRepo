@@ -1314,7 +1314,50 @@ def resolve_debit_credit_using_balance(df):
 				df.at[i, "Debits"] = abs(diff)
 
 	return df
+def step_sync_raw_with_cleaned(df):
+    """
+    After resolution, synchronise raw strings and corrected columns with the cleaned numeric values.
+    - For fallback rows (numeric present, raw empty): set raw string to a clean numeric string
+      and directly set the corrected column to the numeric value.
+    - For garbage rows (numeric NaN, raw non‑empty): clear raw string and set corrected column to NaN.
+    """
+    def is_empty(x):
+        return not isinstance(x, str) or x.strip() == ''
 
+    if 'Debits_Raw' in df.columns and 'Debits' in df.columns:
+        # Fallback: numeric present, raw empty
+        mask = df['Debits'].notna() & (df['Debits_Raw'].apply(is_empty))
+        if mask.any():
+            # Use a clean two‑decimal string to avoid OCR mis‑parsing
+            clean_str = df.loc[mask, 'Debits'].apply(lambda x: f"{x:.2f}")
+            df.loc[mask, 'Debits_Raw'] = clean_str
+            if 'Debits_Corrected' in df.columns:
+                df.loc[mask, 'Debits_Corrected'] = df.loc[mask, 'Debits']
+
+        # Garbage: numeric NaN, raw non‑empty
+        mask2 = df['Debits'].isna() & (~df['Debits_Raw'].apply(is_empty))
+        if mask2.any():
+            df.loc[mask2, 'Debits_Raw'] = ''
+            if 'Debits_Corrected' in df.columns:
+                df.loc[mask2, 'Debits_Corrected'] = np.nan
+
+    if 'Credits_Raw' in df.columns and 'Credits' in df.columns:
+        # Fallback: numeric present, raw empty
+        mask = df['Credits'].notna() & (df['Credits_Raw'].apply(is_empty))
+        if mask.any():
+            clean_str = df.loc[mask, 'Credits'].apply(lambda x: f"{x:.2f}")
+            df.loc[mask, 'Credits_Raw'] = clean_str
+            if 'Credits_Corrected' in df.columns:
+                df.loc[mask, 'Credits_Corrected'] = df.loc[mask, 'Credits']
+
+        # Garbage: numeric NaN, raw non‑empty
+        mask2 = df['Credits'].isna() & (~df['Credits_Raw'].apply(is_empty))
+        if mask2.any():
+            df.loc[mask2, 'Credits_Raw'] = ''
+            if 'Credits_Corrected' in df.columns:
+                df.loc[mask2, 'Credits_Corrected'] = np.nan
+
+    return df
 def adjust_debit_sign_based_on_balance(df):
     """
     Adjust sign of debit amounts based on balance movement.
@@ -1635,6 +1678,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 	# Parse amounts FIRST (but save raw values)
 	df = run_step("parse_amounts", step_parse_amounts, df)
 	df = run_step("resolve_debit_credit_using_balance", step_resolve_drcr_balance, df)
+	df = run_step("sync_raw_with_cleaned", step_sync_raw_with_cleaned, df)
 	df = run_step("remove_metadata_rows", step_remove_metadata_rows, df)
 	
 	# Add the new step for OCR correction (uses raw values saved in parse_amounts)
@@ -1864,6 +1908,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\Admin\Documents\Metis\UTIB\eval_dir\output\917\917.csv"
-	output_csv = r"C:\Users\Admin\Documents\Metis\OCR Cleaning\Outputs\917_cleaned.csv"
+	input_csv = r"C:\Users\kayro\Downloads\all_banks\eval_dir\output\1318\1318.csv"
+	output_csv = r"C:\Users\kayro\Downloads\all_banks\eval_dir\output\1318\r1318.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
