@@ -97,10 +97,10 @@ def clean_by_majority_structure(df, max_gap_cap=4):
 			return np.nan  # temporary, will fix later
 
 		# Identify the last data-containing column for every row
-		# df_copy['_last_pos'] = df_copy.apply(
-		# lambda row: last_valid_position(row, max_gap),
-		# axis=1
-		# )
+		df_copy['_last_pos'] = df_copy.apply(
+		lambda row: last_valid_position(row, max_gap),
+		axis=1
+		)
 
 		majority_pos = df_copy["_last_pos"].mode()[0]
 		df_copy["_last_pos"] = df_copy["_last_pos"].fillna(majority_pos)
@@ -144,6 +144,70 @@ def clean_by_majority_structure(df, max_gap_cap=4):
 		csv_outputs[f"defaultshape"] = csv_buffer.getvalue()
 		
 		return df , csv_outputs
+
+def drop_last_rows(df):
+    # Step 1: Read CSV
+    # df = pd.read_csv(file_path, header=None, dtype=str)
+
+    # Convert "" to NaN
+    df.replace('""', np.nan, inplace=True)
+
+    # Drop rows where all values are NaN
+    df.dropna(how='all', inplace=True)
+
+    # Debug file (optional)
+    df.to_csv("after_dropna.csv", index=False)
+
+    # Reset index
+    df.reset_index(drop=True, inplace=True)
+
+    # Convert dataframe to list of rows
+    rows = df.values.tolist()
+
+    index_list = []
+
+    # Inline function logic for shape
+    def get_shape(row):
+        last_valid_idx = -1
+        for idx in range(len(row) - 1, -1, -1):
+            if pd.notna(row[idx]):
+                last_valid_idx = idx
+                break
+        return last_valid_idx + 1 if last_valid_idx != -1 else 0
+
+    # Step 2: Initialize pointers
+    i = 0
+    base_shape = get_shape(rows[i])
+
+    k = 1
+
+    while k < len(rows):
+        current_shape = get_shape(rows[k])
+
+        if current_shape == base_shape:
+            k += 1
+            continue
+        else:
+            j = k  # as per your updated logic
+
+            # Check next 4 rows
+            match_found = False
+            for future in range(k + 1, min(k + 5, len(rows))):
+                future_shape = get_shape(rows[future])
+
+                if future_shape == base_shape:
+                    match_found = True
+                    break
+
+            if not match_found:
+                index_list.append(j)
+
+            k += 1
+
+    # Drop detected rows
+    cleaned_df = df.drop(index=index_list).reset_index(drop=True)
+
+    return cleaned_df, index_list
 
 # HEADER ROW DETECTOR
 def detect_header_row(df_raw):
@@ -1740,6 +1804,7 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 				header_row = detect_header_row(df_raw)
 
 				if header_row is not None:
+					df_raw,indices=drop_last_rows(df_raw)
 					break
 			except Exception as e:
 				print(f"{name} failed: {e}")
@@ -1924,6 +1989,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\kayro\Downloads\all_banks\eval_dir\output\1318\1318.csv"
-	output_csv = r"C:\Users\kayro\Downloads\all_banks\eval_dir\output\1318\r1318.csv"
+	input_csv = r"D:\Sophiox Cleaning Code\failed\ksf_bl_91378__918020111938177__LILhn18gF0__XXXXXXXXXXX817701112023to200520241.csv"
+	output_csv = r"cleaned.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
