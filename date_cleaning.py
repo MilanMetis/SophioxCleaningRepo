@@ -92,7 +92,7 @@ def parse_custom_date(x) -> Optional[str]:
     try:
         if x is None or str(x).strip() == "":
             return None
-
+        
         original_x = str(x).strip()
         # NEW: Remove trailing time components (e.g., " 00:00", " 00:00:00", " 00:00 AM/PM")
         original_x = re.sub(r'\s+\d{1,2}:\d{2}(:\d{2})?(\s*[AP]M)?$', '', original_x, flags=re.IGNORECASE) 
@@ -124,6 +124,7 @@ def parse_custom_date(x) -> Optional[str]:
         x_upper = original_x.upper()
         
         # Clean common OCR errors and special characters
+        x_upper = original_x.upper()
         x_upper = re.sub(r'\(.*?\)', '', x_upper)
         x_upper = re.sub(r'\s+', ' ', x_upper)
         x_upper = x_upper.replace('0CT', 'OCT').replace('A0G', 'AUG')
@@ -142,7 +143,14 @@ def parse_custom_date(x) -> Optional[str]:
             x_upper = x_upper.replace(wrong, correct)
         
         x_upper = x_upper.strip()
-        
+        # Handle format like "26-0CT-2417:15:51" or "25-OCT-2418:42:23"
+        match = re.match(r'^[^\d]*(\d{1,2})-([A-Z0-9]{3,4})-(\d{2})\d{2}:\d{2}:\d{2}', x_upper)
+        if match:
+            day, month_str, year_two = match.groups()
+            month_num = normalize_month(month_str)
+            if month_num:
+                year = '20' + year_two if int(year_two) <= 30 else '19' + year_two
+                return f"{int(day):02d}/{month_num}/{year}"
         # Strategy 1: Try standard date formats with day, month, year (complete dates)
         match = re.match(r'(\d{1,2})[-/\s\.]+([A-Z]{3,9})[-/\s\.]+(\d{2,4})', x_upper, re.IGNORECASE)
         if match:
