@@ -628,9 +628,16 @@ def clean_debit_credit(df):
 		for col in df.columns
 	)
 
+	pattern = re.compile(
+    r'\bamount(\s*\(?\s*(inr|in\s*rs\.?)\s*\)?)?\b',
+    re.IGNORECASE
+	)
+
 	type_drcr = any(
-		col.lower() in ['type', 'txn type', 'transaction type', 'cr/dr', 'amount', 'amount(inr)']
-		for col in df.columns
+
+    	(col.lower() in ['type', 'txn type', 'transaction type', 'cr/dr']) 
+    	or pattern.search(col.lower())
+    	for col in df.columns
 	)
 
 	has_drcr = regex_drcr and type_drcr
@@ -877,7 +884,7 @@ def normalize_headers(df):
 		"Value Date": {"Value Date", "VAL DATE", "Val Date", "VALUE DT","ValueDate", "VALDATE"},
 		"XN Date": {"Post.Dt","Date(ValueDate)","Date","Txn Posted Date","TransactionDate &Time","Tran Date","GL. Date","Date Day/Night","TransactionDate","TxnDate& Time","DAT VALUE", "Date(Value Date","Date& Time", "Post Date", "PostDate", "TRANSACTION DATE", "Tran Date", "TranDate","XN Date", "Transaction date", "Txn Date", "Post date","ate", "DATE", "Transaction Date", "TRAN DATE", "TRANDATE","Transactio n Date"},
 		"Cheque No": {"Cheque/Refer enceNo","Cheque.No./Ref.No", "Cheq No ue", "CHQ/REFNO.","CHEQUE/REFERENCE#", "ChequeNo.", "Chq.No", "Cheque No","Chq./ref.no", "Ref No", "Cheque number", "Ref no./cheque no.","Chq.no", "Chq No", "CHQ.NO.", "CHQ NO", "Cheque No.","Cheque Number", "Chq./Ref.No", "Chq.No."," Ref No./Cheque No.", "CHQ.NO", "Cnq.No.","Chq/Ref number", "Chq/Ref No"},
-		"Narration": {"Transaction","TransactionReference","RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks","TransactionParticulars"},
+		"Narration": {"Transaction Reference","Transaction","TransactionReference","RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks","TransactionParticulars"},
 		"Credits": {"CrAmount","Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
 		"Debits": {"W ithdrawals","Dr Amount","Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
 		"Balance": {"Amount","TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "Batance","BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance","C losingBalance INR"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance","Total Amount Dr/Cr"}
@@ -1390,6 +1397,7 @@ def resolve_debit_credit_using_balance(df):
 
 	return df
 def step_sync_raw_with_cleaned(df):
+
     """
     After resolution, synchronise raw strings and corrected columns with the cleaned numeric values.
     - For fallback rows (numeric present, raw empty): set raw string to a clean numeric string
@@ -1433,6 +1441,9 @@ def step_sync_raw_with_cleaned(df):
                 df.loc[mask2, 'Credits_Corrected'] = np.nan
 
     return df
+
+
+
 def adjust_debit_sign_based_on_balance(df):
 	"""
 	Adjust sign of debit amounts based on balance movement.
@@ -1595,7 +1606,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 				row_preview = " | ".join(str(v)[:50] for v in row if pd.notna(v) and str(v).strip())
 				# print(f"  Row {idx}: {row_preview}")
 				narration = row.get("Narration", "")  # safe access
-				# print(f"Removed Row {idx} | Narration: {narration}")
+				print(f"Removed Row {idx} | Narration: {narration}")
 		else:
 			print("No metadata rows removed.")
 		df = df[~mask]
@@ -1989,6 +2000,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"D:\Sophiox Cleaning Code\failed\ksf_bl_91378__918020111938177__LILhn18gF0__XXXXXXXXXXX817701112023to200520241.csv"
-	output_csv = r"cleaned.csv"
+	input_csv = r"C:\Users\Admin\Downloads\2357.csv"
+	output_csv = r"C:\Users\Admin\Documents\Metis\OCR Cleaning\Outputs\2357_cleaned.csv"	
 	clean_main(input_csv, output_csv, logging=False, debug=True)
