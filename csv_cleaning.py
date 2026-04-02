@@ -621,7 +621,7 @@ def clean_debit_credit(df):
 
 	regex_drcr = any(
 		re.fullmatch(
-			r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit|type)',
+			r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|cr/dr|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit|type|transaction\s*type)',
 			col,
 			flags=re.IGNORECASE
 		)
@@ -1444,49 +1444,6 @@ def step_sync_raw_with_cleaned(df):
 
 
 
-def adjust_debit_sign_based_on_balance(df):
-	"""
-	Adjust sign of debit amounts based on balance movement.
-	For each row i (starting from index 1):
-		if Balance[i] > Balance[i-1] and Debits[i] < 0, then set Debits[i] = abs(Debits[i]).
-	Also ensure Credits are positive (remove any negative signs).
-	"""
-	# Create a copy to avoid SettingWithCopyWarning
-	df = df.copy()
-	
-	# Ensure columns are numeric
-	for col in ['Debits', 'Credits', 'Balance']:
-		if col in df.columns:
-			df[col] = pd.to_numeric(df[col], errors='coerce')
-	
-	# Make credits positive (absolute value)
-	if 'Credits' in df.columns:
-		df['Credits'] = df['Credits'].abs()
-	
-	# Adjust debit signs based on balance movement
-	if 'Debits' in df.columns and 'Balance' in df.columns:
-		# Convert to list to avoid read-only array issue
-		balances = df['Balance'].tolist()
-		debits = df['Debits'].tolist()
-		
-		# Iterate using index positions
-		for i in range(1, len(balances)):
-			# Skip if any of the values are NaN
-			if pd.isna(balances[i-1]) or pd.isna(balances[i]) or pd.isna(debits[i]):
-				continue
-			# If balance increased and debit is negative, flip to positive
-			if balances[i] > balances[i-1] and debits[i] < 0:
-				debits[i] = abs(debits[i])
-		
-		# Assign back
-		df['Debits'] = debits
-	
-	
-	return df
-
-
-
-
 def run_step(step_name, func, df):
 	"""
 	Helper function to run each step with error handling
@@ -1554,7 +1511,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 			"TOTAL DEBIT", "TOTAL CREDIT", "TOTALDEBIT", "TOTALCREDIT",
 			"YOUR OPENING", "BALANCE ON","PageTotal",
 			"LOSINGBALANCE", "RROUGHTFOROWARD", "BROOGHTFORWARD",
-			"TRANSACTIONTOTAI", "TRANSACTION TOTAL DRICR",
+			"TRANSACTIONTOTAI", "TRANSACTION TOTAL DRICR","page","Page",
 			"BALANCE CARRIED", "BALANCE BROUGHT","Cumulative Totals","b/f..","ance","TotalNumberofTransactions","Turnover"
 		]
 
@@ -1850,9 +1807,7 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 					cleaned_df['Balance'] = df_with_diff['Balance_Adjusted']
 					# print("✓ Updated cleaned file with adjusted balances.")
 				
-				# ========== NEW: Adjust debit signs based on balance ==========
-				cleaned_df = adjust_debit_sign_based_on_balance(cleaned_df)
-				# ==============================================================
+				# (Removed the adjust_debit_sign_based_on_balance call)
 				
 				# Update corrected columns to reflect sign changes (if they exist)
 				if 'Debits_Corrected' in cleaned_df.columns:
@@ -1870,6 +1825,37 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 					if 'Balance_Corrected' in cleaned_df.columns:
 						cleaned_df['Balance_Corrected'] = df_with_diff['Balance_Adjusted']
 					cleaned_df['Balance'] = df_with_diff['Balance_Adjusted']
+				
+				# ========== FINAL SIGN CORRECTION (only at the end) ==========
+				# Ensure Credits are positive
+				if 'Credits' in cleaned_df.columns:
+					cleaned_df['Credits'] = pd.to_numeric(cleaned_df['Credits'], errors='coerce')
+					cleaned_df['Credits'] = cleaned_df['Credits'].abs()
+				
+				# Correct Debit signs based on balance movement
+				if 'Debits' in cleaned_df.columns and 'Balance' in cleaned_df.columns:
+					cleaned_df['Debits'] = pd.to_numeric(cleaned_df['Debits'], errors='coerce')
+					cleaned_df['Balance'] = pd.to_numeric(cleaned_df['Balance'], errors='coerce')
+					cleaned_df = cleaned_df.reset_index(drop=True)
+					for i in range(1, len(cleaned_df)):
+						prev_bal = cleaned_df.iloc[i-1]['Balance']
+						curr_bal = cleaned_df.iloc[i]['Balance']
+						debit = cleaned_df.iloc[i]['Debits']
+						if pd.notna(prev_bal) and pd.notna(curr_bal) and pd.notna(debit):
+							if curr_bal < prev_bal and debit > 0:
+								cleaned_df.iloc[i, cleaned_df.columns.get_loc('Debits')] = -debit
+							elif curr_bal > prev_bal and debit < 0:
+								cleaned_df.iloc[i, cleaned_df.columns.get_loc('Debits')] = abs(debit)
+				# ============================================================
+				
+				# ========== RECALCULATE DIFFERENCES AFTER SIGN CORRECTION ==========
+				df_with_diff_final, all_correct_final, adjusted_final = calculate_difference_and_verify(cleaned_df)
+				if adjusted_final and 'Balance_Adjusted' in df_with_diff_final.columns:
+					if 'Balance_Corrected' in cleaned_df.columns:
+						cleaned_df['Balance_Corrected'] = df_with_diff_final['Balance_Adjusted']
+					cleaned_df['Balance'] = df_with_diff_final['Balance_Adjusted']
+				df_with_diff = df_with_diff_final  # Use this for debug
+				# ==================================================================
 				
 				# Save the main cleaned file (without debug columns)
 				required_cols = ['XN Date', 'Cheque No', 'Narration', 'Debits', 'Credits', 'Balance']
@@ -1969,11 +1955,11 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 						corrections_made += balance_changes
 						#print(f"Balance corrected: {balance_changes} rows")
 				
-				if adjusted:
+				if adjusted_final:
 					# print("\n BALANCES ADJUSTED: Decimal differences have been synchronized.")
 					# print("   Updated balances saved to cleaned file.")
 					pass
-				elif all_correct:
+				elif all_correct_final:
 					# print("\n VERIFICATION PASSED: All differences are 0")
 					# print("   The corrected values are mathematically consistent.")
 					pass
@@ -1999,8 +1985,7 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		import traceback
 		traceback.print_exc()
 
-
 if __name__ == "__main__":
-	input_csv = r"C:\Users\Admin\Documents\Metis\4_bank_run\eval_dir\output\1887\1887.csv"
-	output_csv = r"C:\Users\Admin\Documents\Metis\OCR Cleaning\Outputs\1887_cleaned.csv"	
+	input_csv = r"C:\Users\kayro\Downloads\4_bank_run\eval_dir\output\1887\1887.csv"
+	output_csv = r"C:\Users\kayro\Downloads\4_bank_run\eval_dir\output\1887\r1887.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
