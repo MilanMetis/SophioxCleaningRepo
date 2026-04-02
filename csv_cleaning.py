@@ -621,7 +621,7 @@ def clean_debit_credit(df):
 
 	regex_drcr = any(
 		re.fullmatch(
-			r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|cr/dr|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit|type)',
+			r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit|type)',
 			col,
 			flags=re.IGNORECASE
 		)
@@ -629,7 +629,7 @@ def clean_debit_credit(df):
 	)
 
 	pattern = re.compile(
-    r'\bamount(\s*\(?\s*(inr|in\s*rs\.?)\s*\)?)?\b',
+    r'\bamount\b.*|\ba\s*mount\b.*',
     re.IGNORECASE
 	)
 
@@ -641,7 +641,6 @@ def clean_debit_credit(df):
 	)
 
 	has_drcr = regex_drcr and type_drcr
-
 
 	has_mixed_amount = any(
 		re.search(r'withdrawal\s*\(?\s*dr\s*\)?\s*[/|\\-]\s*deposit\s*\(?\s*cr\s*\)?|debit.*credit|dr.*cr|amount', col, re.IGNORECASE) for col in df.columns
@@ -769,9 +768,10 @@ def parse_debit_credit_split_safe(df):
 	# -----------------------------
 	amount_col = None
 	for col in df.columns:
-		if re.search(r'amount|amt|transaction.*amount|amount\s*\(.*\)', col.lower()):
+		if re.search(r'amount|amt|transaction.*amount|amount\s*\(.*\)|\bamount\b.*|\ba\s*mount\b.*', col.lower()):
 			amount_col = col
 			break
+	
 
 	if not amount_col:
 		return df
@@ -1481,6 +1481,7 @@ def adjust_debit_sign_based_on_balance(df):
 		# Assign back
 		df['Debits'] = debits
 	
+	
 	return df
 
 
@@ -1606,7 +1607,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 				row_preview = " | ".join(str(v)[:50] for v in row if pd.notna(v) and str(v).strip())
 				# print(f"  Row {idx}: {row_preview}")
 				narration = row.get("Narration", "")  # safe access
-				print(f"Removed Row {idx} | Narration: {narration}")
+				# print(f"Removed Row {idx} | Narration: {narration}")
 		else:
 			print("No metadata rows removed.")
 		df = df[~mask]
@@ -2000,6 +2001,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\Admin\Downloads\2357.csv"
-	output_csv = r"C:\Users\Admin\Documents\Metis\OCR Cleaning\Outputs\2357_cleaned.csv"	
+	input_csv = r"C:\Users\Admin\Documents\Metis\4_bank_run\eval_dir\output\1887\1887.csv"
+	output_csv = r"C:\Users\Admin\Documents\Metis\OCR Cleaning\Outputs\1887_cleaned.csv"	
 	clean_main(input_csv, output_csv, logging=False, debug=True)
