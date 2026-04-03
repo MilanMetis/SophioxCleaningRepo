@@ -204,7 +204,15 @@ def parse_custom_date(x) -> Optional[str]:
                 if len(year) == 2:
                     year = '20' + year if int(year) <= 30 else '19' + year
                 return f"{int(day):02d}/{month_num}/{year}"
-        
+       
+        # Match "Month Day,Year" (space allowed)
+        match = re.match(r'([A-Za-z]{3,9})\s+(\d{1,2}),\s*(\d{4})', x_upper, re.IGNORECASE)
+        if match:
+            month_str, day, year = match.groups()
+            month_num = normalize_month(month_str)
+            if month_num:
+                return f"{int(day):02d}/{month_num}/{year}"
+            
         # Strategy 3: Handle year-only
         if re.match(r'^\d{4}$', x_upper):
             return f"{x_upper}"
