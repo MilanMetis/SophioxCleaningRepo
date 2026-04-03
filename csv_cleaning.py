@@ -156,7 +156,7 @@ def drop_last_rows(df):
     df.dropna(how='all', inplace=True)
 
     # Debug file (optional)
-    df.to_csv("after_dropna.csv", index=False)
+    # df.to_csv("after_dropna.csv", index=False)
 
     # Reset index
     df.reset_index(drop=True, inplace=True)
@@ -616,7 +616,7 @@ def clean_debit_credit(df):
 
 	# If both exist → already split
 	if has_debit_col and has_credit_col:
-		print("Already split Debit & Credit columns detected.")
+		# print("Already split Debit & Credit columns detected.")
 		return df
 
 	regex_drcr = any(
@@ -842,7 +842,7 @@ def merge_balance_with_adjacent_type(df):
 	"""
 
 	if 'Balance' not in df.columns:
-		print("No Balance column found.")
+		# print("No Balance column found.")
 		return df
 
 	cols = list(df.columns)
@@ -850,7 +850,7 @@ def merge_balance_with_adjacent_type(df):
 
 	# Check next column exists
 	if balance_index + 1 >= len(cols):
-		print("No column after Balance. Skipping merge.")
+		# print("No column after Balance. Skipping merge.")
 		return df
 
 	next_col = cols[balance_index + 1]
@@ -860,10 +860,10 @@ def merge_balance_with_adjacent_type(df):
 	valid_names = ['balance_drcr', 'drcr', 'type', 'dr/cr', 'cr/dr']
 
 	if normalized_next not in valid_names:
-		print(f"{next_col} is not a valid DR/CR column. Skipping merge.")
+		# print(f"{next_col} is not a valid DR/CR column. Skipping merge.")
 		return df
 
-	print(f"Merging Balance with adjacent column: {next_col}")
+	# print(f"Merging Balance with adjacent column: {next_col}")
 
 	# Clean values
 	df['Balance'] = df['Balance'].fillna('').astype(str).str.strip()
@@ -885,9 +885,9 @@ def normalize_headers(df):
 		"XN Date": {"Post.Dt","Date(ValueDate)","Date","Txn Posted Date","TransactionDate &Time","Tran Date","GL. Date","Date Day/Night","TransactionDate","TxnDate& Time","DAT VALUE", "Date(Value Date","Date& Time", "Post Date", "PostDate", "TRANSACTION DATE", "Tran Date", "TranDate","XN Date", "Transaction date", "Txn Date", "Post date","ate", "DATE", "Transaction Date", "TRAN DATE", "TRANDATE","Transactio n Date"},
 		"Cheque No": {"Cheque/Refer enceNo","Cheque.No./Ref.No", "Cheq No ue", "CHQ/REFNO.","CHEQUE/REFERENCE#", "ChequeNo.", "Chq.No", "Cheque No","Chq./ref.no", "Ref No", "Cheque number", "Ref no./cheque no.","Chq.no", "Chq No", "CHQ.NO.", "CHQ NO", "Cheque No.","Cheque Number", "Chq./Ref.No", "Chq.No."," Ref No./Cheque No.", "CHQ.NO", "Cnq.No.","Chq/Ref number", "Chq/Ref No"},
 		"Narration": {"Transaction Reference","Transaction","TransactionReference","RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks","TransactionParticulars"},
-		"Credits": {"CrAmount","Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
+		"Credits": {"CrAmount","DEPOSITAMT","Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
 		"Debits": {"W ithdrawals","Dr Amount","Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
-		"Balance": {"Amount","TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "Batance","BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance","C losingBalance INR"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance","Total Amount Dr/Cr"}
+		"Balance": {"Amount","BALANCEAMT","TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "Batance","BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance","C losingBalance INR"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance","Total Amount Dr/Cr"}
 	}
 
 	HEADER_REGEX = {
@@ -1030,7 +1030,7 @@ def normalize_headers(df):
 	if 'Value Date' in df.columns and 'XN Date' not in df.columns:
 		df['XN Date'] = df['Value Date']	
 		
-	# # print("Columns after normalization:", df.columns.tolist())
+	#  print("Columns after normalization:", df.columns.tolist())
 	return df
 
 
@@ -1396,6 +1396,57 @@ def resolve_debit_credit_using_balance(df):
 				df.at[i, "Debits"] = abs(diff)
 
 	return df
+
+def remove_trailing_summary_rows(df, max_check_rows=5):
+    """
+    Remove trailing rows after the last balance change, looking only at the last `max_check_rows` rows.
+    
+    Logic:
+    - Convert Balance column to numeric.
+    - Examine up to `max_check_rows` rows from the end.
+    - Find the last position (from the bottom) where the balance changes from its previous row.
+    - If such a change exists within the last `max_check_rows` rows, keep rows up to that change (inclusive).
+    - If all the last `max_check_rows` rows have the same balance (no change within them), keep all rows unchanged.
+    
+    This removes summary rows like totals or repeated closing balances that follow the last valid transaction.
+    """
+    if df.empty or 'Balance' not in df.columns:
+        return df
+    
+    # Convert Balance to numeric, coercing errors
+    balance_numeric = pd.to_numeric(df['Balance'], errors='coerce')
+    n = len(balance_numeric)
+    
+    if n <= 1:
+        return df
+    
+    # Look only at last `max_check_rows` rows
+    start_idx = max(0, n - max_check_rows)
+    
+    # Traverse from the end of this slice backwards
+    last_change_idx = None
+    for i in range(n-1, start_idx, -1):
+        prev_val = balance_numeric.iloc[i-1]
+        curr_val = balance_numeric.iloc[i]
+        
+        # Skip if either is NaN
+        if pd.isna(prev_val) or pd.isna(curr_val):
+            continue
+        
+        # Check for change (with tolerance for floating point)
+        if abs(curr_val - prev_val) > 1e-6:
+            # Change detected: row i is the first row with new balance
+            # Keep rows up to i (inclusive)
+            last_change_idx = i
+            break
+    
+    if last_change_idx is not None:
+        # Trim rows after the last change
+        df = df.iloc[:last_change_idx+1].reset_index(drop=True)
+    # else: no change within last 5 rows → keep all
+    
+    return df
+
 def step_sync_raw_with_cleaned(df):
 
     """
@@ -1555,7 +1606,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 		mask = df.apply(is_metadata_row, axis=1)
 		removed_count = mask.sum()
 		if removed_count > 0:
-			print(f"Removed {removed_count} metadata row(s) (fuzzy match or regex pattern)")
+			# print(f"Removed {removed_count} metadata row(s) (fuzzy match or regex pattern)")
 			# Print the rows that were removed
 			removed_rows = df[mask]
 			# print("Rows removed:")
@@ -1564,9 +1615,10 @@ def clean_bank_statement(df, file_path=None, logging=True):
 				row_preview = " | ".join(str(v)[:50] for v in row if pd.notna(v) and str(v).strip())
 				# print(f"  Row {idx}: {row_preview}")
 				narration = row.get("Narration", "")  # safe access
-				print(f"Removed Row {idx} | Narration: {narration}")
+				# print(f"Removed Row {idx} | Narration: {narration}")
 		else:
-			print("No metadata rows removed.")
+			# print("No metadata rows removed.")
+			pass
 		df = df[~mask]
 
 		return df
@@ -1708,8 +1760,9 @@ def clean_bank_statement(df, file_path=None, logging=True):
 				rows_to_drop.append(i)
 
 		if rows_to_drop:
-			print(f"Removed {len(rows_to_drop)} consecutive duplicate row(s)")
-		
+			# print(f"Removed {len(rows_to_drop)} consecutive duplicate row(s)")
+			pass
+
 		df = df.drop(index=df.index[rows_to_drop]).reset_index(drop=True)
 		return df
 	
@@ -1807,7 +1860,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 					cleaned_df['Balance'] = df_with_diff['Balance_Adjusted']
 					# print("✓ Updated cleaned file with adjusted balances.")
 				
-				# (Removed the adjust_debit_sign_based_on_balance call)
 				
 				# Update corrected columns to reflect sign changes (if they exist)
 				if 'Debits_Corrected' in cleaned_df.columns:
@@ -1856,7 +1908,8 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 					cleaned_df['Balance'] = df_with_diff_final['Balance_Adjusted']
 				df_with_diff = df_with_diff_final  # Use this for debug
 				# ==================================================================
-				
+				cleaned_df = remove_trailing_summary_rows(cleaned_df)
+				df_with_diff = remove_trailing_summary_rows(df_with_diff)
 				# Save the main cleaned file (without debug columns)
 				required_cols = ['XN Date', 'Cheque No', 'Narration', 'Debits', 'Credits', 'Balance']
 				available_cols = [col for col in required_cols if col in cleaned_df.columns]
@@ -1927,7 +1980,7 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 						diff_mask = ~np.isclose(original_values, corrected_values, rtol=1e-9, atol=1e-9)
 						debit_changes = diff_mask.sum()
 						corrections_made += debit_changes
-						print(f"Debits corrected: {debit_changes} rows")
+						# print(f"Debits corrected: {debit_changes} rows")
 				
 				if 'Credits_Corrected' in df_with_diff.columns and 'Credits_Original' in df_with_diff.columns:
 					mask = ~pd.isna(df_with_diff['Credits_Corrected'])
@@ -1986,6 +2039,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		traceback.print_exc()
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\kayro\Downloads\4_bank_run\eval_dir\output\1887\1887.csv"
-	output_csv = r"C:\Users\kayro\Downloads\4_bank_run\eval_dir\output\1887\r1887.csv"
+	input_csv = r"C:\Users\kayro\Desktop\3996.csv"
+	output_csv = r"C:\Users\kayro\Desktop\3996.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
