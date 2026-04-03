@@ -146,68 +146,68 @@ def clean_by_majority_structure(df, max_gap_cap=4):
 		return df , csv_outputs
 
 def drop_last_rows(df):
-    # Step 1: Read CSV
-    # df = pd.read_csv(file_path, header=None, dtype=str)
+	# Step 1: Read CSV
+	# df = pd.read_csv(file_path, header=None, dtype=str)
 
-    # Convert "" to NaN
-    df.replace('""', np.nan, inplace=True)
+	# Convert "" to NaN
+	df.replace('""', np.nan, inplace=True)
 
-    # Drop rows where all values are NaN
-    df.dropna(how='all', inplace=True)
+	# Drop rows where all values are NaN
+	df.dropna(how='all', inplace=True)
 
-    # Debug file (optional)
-    df.to_csv("after_dropna.csv", index=False)
+	# Debug file (optional)
+	# df.to_csv("after_dropna.csv", index=False)
 
-    # Reset index
-    df.reset_index(drop=True, inplace=True)
+	# Reset index
+	df.reset_index(drop=True, inplace=True)
 
-    # Convert dataframe to list of rows
-    rows = df.values.tolist()
+	# Convert dataframe to list of rows
+	rows = df.values.tolist()
 
-    index_list = []
+	index_list = []
 
-    # Inline function logic for shape
-    def get_shape(row):
-        last_valid_idx = -1
-        for idx in range(len(row) - 1, -1, -1):
-            if pd.notna(row[idx]):
-                last_valid_idx = idx
-                break
-        return last_valid_idx + 1 if last_valid_idx != -1 else 0
+	# Inline function logic for shape
+	def get_shape(row):
+		last_valid_idx = -1
+		for idx in range(len(row) - 1, -1, -1):
+			if pd.notna(row[idx]):
+				last_valid_idx = idx
+				break
+		return last_valid_idx + 1 if last_valid_idx != -1 else 0
 
-    # Step 2: Initialize pointers
-    i = 0
-    base_shape = get_shape(rows[i])
+	# Step 2: Initialize pointers
+	i = 0
+	base_shape = get_shape(rows[i])
 
-    k = 1
+	k = 1
 
-    while k < len(rows):
-        current_shape = get_shape(rows[k])
+	while k < len(rows):
+		current_shape = get_shape(rows[k])
 
-        if current_shape == base_shape:
-            k += 1
-            continue
-        else:
-            j = k  # as per your updated logic
+		if current_shape == base_shape:
+			k += 1
+			continue
+		else:
+			j = k  # as per your updated logic
 
-            # Check next 4 rows
-            match_found = False
-            for future in range(k + 1, min(k + 5, len(rows))):
-                future_shape = get_shape(rows[future])
+			# Check next 4 rows
+			match_found = False
+			for future in range(k + 1, min(k + 5, len(rows))):
+				future_shape = get_shape(rows[future])
 
-                if future_shape == base_shape:
-                    match_found = True
-                    break
+				if future_shape == base_shape:
+					match_found = True
+					break
 
-            if not match_found:
-                index_list.append(j)
+			if not match_found:
+				index_list.append(j)
 
-            k += 1
+			k += 1
 
-    # Drop detected rows
-    cleaned_df = df.drop(index=index_list).reset_index(drop=True)
+	# Drop detected rows
+	cleaned_df = df.drop(index=index_list).reset_index(drop=True)
 
-    return cleaned_df, index_list
+	return cleaned_df, index_list
 
 # HEADER ROW DETECTOR
 def detect_header_row(df_raw):
@@ -621,7 +621,7 @@ def clean_debit_credit(df):
 
 	regex_drcr = any(
 		re.fullmatch(
-			r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|cr/dr|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit|type|transaction\s*type)',
+			r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|cr/dr|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit|type|transaction\s*type|dr\s*/\s*cr|cr\s*/\s*dr)',
 			col,
 			flags=re.IGNORECASE
 		)
@@ -629,28 +629,26 @@ def clean_debit_credit(df):
 	)
 
 	pattern = re.compile(
-    r'\bamount\b.*|\ba\s*mount\b.*',
-    re.IGNORECASE
+	r'\bamount\b.*|\ba\s*mount\b.*',
+	re.IGNORECASE
 	)
 
 	type_drcr = any(
 
-    	(col.lower() in ['type', 'txn type', 'transaction type', 'cr/dr']) 
-    	or pattern.search(col.lower())
-    	for col in df.columns
+		(col.lower() in ['type', 'txn type', 'transaction type', 'cr/dr']) 
+		or pattern.search(col.lower())
+		for col in df.columns
 	)
 
 	has_drcr = regex_drcr and type_drcr
 
 	has_mixed_amount = any(
-		re.search(r'withdrawal\s*\(?\s*dr\s*\)?\s*[/|\\-]\s*deposit\s*\(?\s*cr\s*\)?|debit.*credit|dr.*cr|amount', col, re.IGNORECASE) for col in df.columns
-	)
-
+		re.search(r'withdrawal\s*\(?\s*dr\s*\)?\s*[/|\\-]\s*deposit\s*\(?\s*cr\s*\)?|debit.*credit|dr.*cr|amount|\ba\s*mount\b.*', col, re.IGNORECASE) for col in df.columns
+	)	
 	if has_drcr:
 		df = parse_debit_credit_split_safe(df)
 	elif has_mixed_amount:
 		df = split_drcr_from_amount_column(df)
-	
 	return df
 
 
@@ -669,7 +667,7 @@ def split_drcr_from_amount_column(df):
 
 	# Detect unified amount column
 	amount_col = next(
-		(c for c in df.columns if re.search(r'withdrawal\s*\(dr\)\s*/\s*deposit\s*\(cr\)|amount|amt|withdrawal\s*\(?\s*dr\s*[/\\]?\s*deposit\s*\(?\s*cr\s*\)?', c, re.I)),
+		(c for c in df.columns if re.search(r'withdrawal\s*\(dr\)\s*/\s*deposit\s*\(cr\)|amount|amt|withdrawal\s*\(?\s*dr\s*[/\\]?\s*deposit\s*\(?\s*cr\s*\)?|\ba\s*mount\b.*', c, re.I)),
 		None
 	)
 	if not amount_col:
@@ -698,8 +696,6 @@ def split_drcr_from_amount_column(df):
 
 	df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
 	df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce')
-
-	
 	return df
 
 
@@ -740,7 +736,7 @@ def parse_debit_credit_split_safe(df):
 			r'DR[_]?CR|DRCR|DRICR|'
 			r'DR\.?|CR\.?|'
 			r'Debit[/|]Credit|Credit[/|]Debit|'
-			r'Debit\s*/\s*Credit|Credit\s*/\s*Debit'
+			r'Debit\s*/\s*Credit|Credit\s*/\s*Debit|dr\s*/\s*cr|cr\s*/\s*dr'
 			r')',
 			col.strip(),
 			flags=re.IGNORECASE
@@ -916,9 +912,15 @@ def normalize_headers(df):
 	}
 	standard_headers = set(headers.keys())
 
-	existing_standard_cols = {
-		col.strip() for col in df.columns if col.strip() in standard_headers
-	}
+	existing_standard_cols = set()
+	for col in df.columns:
+		col_stripped = col.strip()
+		if col_stripped in standard_headers:
+			# Check if column has any non‑null, non‑empty string values
+			non_empty = df[col].dropna()
+			non_empty = non_empty[non_empty.astype(str).str.strip() != '']
+			if not non_empty.empty:
+				existing_standard_cols.add(col_stripped)
 
 	# Build fuzzy support
 	all_possible_headers = []
@@ -1393,54 +1395,52 @@ def resolve_debit_credit_using_balance(df):
 
 			# Balance decreased → Debit
 			elif diff < 0:
-				df.at[i, "Debits"] = abs(diff)
-
+				df.at[i, "Debits"] = abs(diff) 
 	return df
 def step_sync_raw_with_cleaned(df):
 
-    """
-    After resolution, synchronise raw strings and corrected columns with the cleaned numeric values.
-    - For fallback rows (numeric present, raw empty): set raw string to a clean numeric string
-      and directly set the corrected column to the numeric value.
-    - For garbage rows (numeric NaN, raw non‑empty): clear raw string and set corrected column to NaN.
-    """
-    def is_empty(x):
-        return not isinstance(x, str) or x.strip() == ''
+	"""
+	After resolution, synchronise raw strings and corrected columns with the cleaned numeric values.
+	- For fallback rows (numeric present, raw empty): set raw string to a clean numeric string
+	  and directly set the corrected column to the numeric value.
+	- For garbage rows (numeric NaN, raw non‑empty): clear raw string and set corrected column to NaN.
+	"""
+	def is_empty(x):
+		return not isinstance(x, str) or x.strip() == ''
 
-    if 'Debits_Raw' in df.columns and 'Debits' in df.columns:
-        # Fallback: numeric present, raw empty
-        mask = df['Debits'].notna() & (df['Debits_Raw'].apply(is_empty))
-        if mask.any():
-            # Use a clean two‑decimal string to avoid OCR mis‑parsing
-            clean_str = df.loc[mask, 'Debits'].apply(lambda x: f"{x:.2f}")
-            df.loc[mask, 'Debits_Raw'] = clean_str
-            if 'Debits_Corrected' in df.columns:
-                df.loc[mask, 'Debits_Corrected'] = df.loc[mask, 'Debits']
+	if 'Debits_Raw' in df.columns and 'Debits' in df.columns:
+		# Fallback: numeric present, raw empty
+		mask = df['Debits'].notna() & (df['Debits_Raw'].apply(is_empty))
+		if mask.any():
+			# Use a clean two‑decimal string to avoid OCR mis‑parsing
+			clean_str = df.loc[mask, 'Debits'].apply(lambda x: f"{x:.2f}")
+			df.loc[mask, 'Debits_Raw'] = clean_str
+			if 'Debits_Corrected' in df.columns:
+				df.loc[mask, 'Debits_Corrected'] = df.loc[mask, 'Debits']
 
-        # Garbage: numeric NaN, raw non‑empty
-        mask2 = df['Debits'].isna() & (~df['Debits_Raw'].apply(is_empty))
-        if mask2.any():
-            df.loc[mask2, 'Debits_Raw'] = ''
-            if 'Debits_Corrected' in df.columns:
-                df.loc[mask2, 'Debits_Corrected'] = np.nan
+		# Garbage: numeric NaN, raw non‑empty
+		mask2 = df['Debits'].isna() & (~df['Debits_Raw'].apply(is_empty))
+		if mask2.any():
+			df.loc[mask2, 'Debits_Raw'] = ''
+			if 'Debits_Corrected' in df.columns:
+				df.loc[mask2, 'Debits_Corrected'] = np.nan
 
-    if 'Credits_Raw' in df.columns and 'Credits' in df.columns:
-        # Fallback: numeric present, raw empty
-        mask = df['Credits'].notna() & (df['Credits_Raw'].apply(is_empty))
-        if mask.any():
-            clean_str = df.loc[mask, 'Credits'].apply(lambda x: f"{x:.2f}")
-            df.loc[mask, 'Credits_Raw'] = clean_str
-            if 'Credits_Corrected' in df.columns:
-                df.loc[mask, 'Credits_Corrected'] = df.loc[mask, 'Credits']
+	if 'Credits_Raw' in df.columns and 'Credits' in df.columns:
+		# Fallback: numeric present, raw empty
+		mask = df['Credits'].notna() & (df['Credits_Raw'].apply(is_empty))
+		if mask.any():
+			clean_str = df.loc[mask, 'Credits'].apply(lambda x: f"{x:.2f}")
+			df.loc[mask, 'Credits_Raw'] = clean_str
+			if 'Credits_Corrected' in df.columns:
+				df.loc[mask, 'Credits_Corrected'] = df.loc[mask, 'Credits']
 
-        # Garbage: numeric NaN, raw non‑empty
-        mask2 = df['Credits'].isna() & (~df['Credits_Raw'].apply(is_empty))
-        if mask2.any():
-            df.loc[mask2, 'Credits_Raw'] = ''
-            if 'Credits_Corrected' in df.columns:
-                df.loc[mask2, 'Credits_Corrected'] = np.nan
-
-    return df
+		# Garbage: numeric NaN, raw non‑empty
+		mask2 = df['Credits'].isna() & (~df['Credits_Raw'].apply(is_empty))
+		if mask2.any():
+			df.loc[mask2, 'Credits_Raw'] = ''
+			if 'Credits_Corrected' in df.columns:
+				df.loc[mask2, 'Credits_Corrected'] = np.nan
+	return df
 
 
 
@@ -1986,6 +1986,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		traceback.print_exc()
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\kayro\Downloads\4_bank_run\eval_dir\output\1887\1887.csv"
-	output_csv = r"C:\Users\kayro\Downloads\4_bank_run\eval_dir\output\1887\r1887.csv"
+	input_csv = r"C:\Users\Admin\Downloads\2047.csv"
+	output_csv = r"C:\Users\Admin\Documents\Metis\OCR Cleaning\Outputs\2047_cleaned.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
