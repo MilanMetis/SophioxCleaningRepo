@@ -1364,6 +1364,8 @@ def resolve_debit_credit_using_balance(df):
 	df["Debits"] = pd.to_numeric(df["Debits"], errors="coerce")
 	df["Credits"] = pd.to_numeric(df["Credits"], errors="coerce")
 	df["Balance"] = pd.to_numeric(df["Balance"], errors="coerce")
+	df["Debits"] = df["Debits"].replace(0.0, np.nan)
+	df["Credits"] = df["Credits"].replace(0.0, np.nan)
 
 	for i in range(1, len(df)):
 		prev_bal = df.at[i - 1, "Balance"]
@@ -1383,7 +1385,7 @@ def resolve_debit_credit_using_balance(df):
 				# Balance increased → Credit
 				elif curr_bal > prev_bal:
 					df.at[i, "Debits"] = np.nan
-					
+			
 		#  CASE 2: BOTH missing (NEW logic added)
 		elif pd.isna(debit) and pd.isna(credit):
 
@@ -1395,8 +1397,7 @@ def resolve_debit_credit_using_balance(df):
 
 			# Balance decreased → Debit
 			elif diff < 0:
-				df.at[i, "Debits"] = abs(diff)
-
+				df.at[i, "Debits"] = abs(diff)	
 	return df
 
 def remove_trailing_summary_rows(df, max_check_rows=5):
@@ -1801,7 +1802,6 @@ def clean_bank_statement(df, file_path=None, logging=True):
 
 	df = remove_blank_rows(df)
 	
-
 	return df
 
 
