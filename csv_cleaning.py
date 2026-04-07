@@ -455,7 +455,7 @@ def parse_balance(value):
     if text in ["", "NAN", "NONE"]:
         return ""
     
-    if re.search(r'page|pg|age', text, re.IGNORECASE):
+    if re.search(r'page|pg|age|pag|pa|ag', text, re.IGNORECASE):
         return ""
     
     # Detect DR / CR (balance-specific)
@@ -1609,7 +1609,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
             "TOTAL DEBIT", "TOTAL CREDIT", "TOTALDEBIT", "TOTALCREDIT",
             "YOUR OPENING", "BALANCE ON","PageTotal",
             "LOSINGBALANCE", "RROUGHTFOROWARD", "BROOGHTFORWARD",
-            "TRANSACTIONTOTAI", "TRANSACTION TOTAL DRICR","page","Page",
+            "TRANSACTIONTOTAI", "TRANSACTION TOTAL DRICR",
             "BALANCE CARRIED", "BALANCE BROUGHT","Cumulative Totals","b/f..","ance","TotalNumberofTransactions","Turnover"
         ]
 
@@ -2089,6 +2089,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
         traceback.print_exc()
 
 if __name__ == "__main__":
-    input_csv = r"C:\Users\kayro\Downloads\failed_icici_p1\failed_sample\ksf_bl_83333__623701514837__wDPnf3E1Y2__6237015148372024020120240425250420241255212404291355232_ICICI_Bank.csv"
-    output_csv = r"C:\Users\kayro\Downloads\failed_icici_p1\failed_sample\rksf_bl_83333__623701514837__wDPnf3E1Y2__6237015148372024020120240425250420241255212404291355232_ICICI_Bank.csv"
+    input_csv = r"1083_Canara_Bank.csv"
+    output_csv = r"r1083_Canara_Bank.csv"
     clean_main(input_csv, output_csv, logging=False, debug=True)
