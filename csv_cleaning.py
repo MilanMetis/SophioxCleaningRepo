@@ -524,19 +524,12 @@ def fill_missing_balances(df):
     if 'Balance' not in df.columns:
         return df
 
-    # Find date column (optional, to skip non‑transaction rows)
-    date_col = None
-    for col in ['XN Date', 'Value Date']:
-        if col in df.columns:
-            date_col = col
-            break
+    
 
     filled = 0
     for i in range(1, len(df)):
         if pd.isna(df.at[i, 'Balance']):
-            # Optionally skip rows without a date
-            if date_col and (pd.isna(df.at[i, date_col]) or str(df.at[i, date_col]).strip() == ''):
-                continue
+            
 
             prev_bal = df.at[i-1, 'Balance'] if not pd.isna(df.at[i-1, 'Balance']) else 0.0
             debit = df.at[i, 'Debits'] if 'Debits' in df.columns and not pd.isna(df.at[i, 'Debits']) else 0.0
