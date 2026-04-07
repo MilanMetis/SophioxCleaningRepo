@@ -12,267 +12,267 @@ from io import StringIO
 # Create check_date directory at module load
 CHECK_DATE_DIR = "check_date"
 if not os.path.exists(CHECK_DATE_DIR):
-	os.makedirs(CHECK_DATE_DIR)
-	print(f"Created log directory: {CHECK_DATE_DIR}")
+    os.makedirs(CHECK_DATE_DIR)
+    print(f"Created log directory: {CHECK_DATE_DIR}")
 
 HEADER_REGEX = [
-	r'\bcr(edit)?\b',
-	r'\bdr(ebit)?\b',
-	r'\bdebits?\b',
-	r'\bcredits?\b',r'\bdeposits?\b',r'\bwithdrawals?\b',
-	r'\bamt|amount|value\b',r'\bpayment\s*n\s*a\s*r\s*r\s*a\s*t\s*i\s*o\s*n\b',r'\b(?:txn|tran|transaction)\s*d\s*a\s*t\s*e\s*(?:&|and)\s*t\s*i\s*m\s*e\b',
-	r'\btype\b',r'\bcredit\s*amount\b',r'\bdebit\s*amount\b',
-	r'\btxn|transaction\b',r'\btran\s*date\b',r'\bg\s*\.?\s*l\s*\.?\s*d\s*a\s*t\s*e\b',
-	r'\b(narration|naration|description|escription|remark|remarks|particulars?|details?)\b',
-	r'\bdate|post\s*date|value\s*date\b',r'\btran(?:saction)?\s*date\b',r'\brunning\s*bal(?:ance)?\b',
-	r'\bcheque|chq|ref(erence)?\b',r'\bbook\s*bal(?:ance)?\b',r'\bdat\s*value\b',
-	r'\bdate\s*(?:&|and)\s*time\b',r'\btxn\s*date\s*(?:&|and)\s*time\b',r'\btransaction\s*details\s*comment.*payment\s*method\b',
-	r'\bdate\s*day\s*/\s*night\b',r'\btransaction\s*date\b',r'\btransaction\s*remarks\b',r'\bdeposit\s*amt.*inr\b',r'\bwithdrawal\s*amt\s*\(?inr\)?\b',
-	
-	]
+    r'\bcr(edit)?\b',
+    r'\bdr(ebit)?\b',
+    r'\bdebits?\b',
+    r'\bcredits?\b',r'\bdeposits?\b',r'\bwithdrawals?\b',
+    r'\bamt|amount|value\b',r'\bpayment\s*n\s*a\s*r\s*r\s*a\s*t\s*i\s*o\s*n\b',r'\b(?:txn|tran|transaction)\s*d\s*a\s*t\s*e\s*(?:&|and)\s*t\s*i\s*m\s*e\b',
+    r'\btype\b',r'\bcredit\s*amount\b',r'\bdebit\s*amount\b',
+    r'\btxn|transaction\b',r'\btran\s*date\b',r'\bg\s*\.?\s*l\s*\.?\s*d\s*a\s*t\s*e\b',
+    r'\b(narration|naration|description|escription|remark|remarks|particulars?|details?)\b',
+    r'\bdate|post\s*date|value\s*date\b',r'\btran(?:saction)?\s*date\b',r'\brunning\s*bal(?:ance)?\b',
+    r'\bcheque|chq|ref(erence)?\b',r'\bbook\s*bal(?:ance)?\b',r'\bdat\s*value\b',
+    r'\bdate\s*(?:&|and)\s*time\b',r'\btxn\s*date\s*(?:&|and)\s*time\b',r'\btransaction\s*details\s*comment.*payment\s*method\b',
+    r'\bdate\s*day\s*/\s*night\b',r'\btransaction\s*date\b',r'\btransaction\s*remarks\b',r'\bdeposit\s*amt.*inr\b',r'\bwithdrawal\s*amt\s*\(?inr\)?\b',
+    
+    ]
 
 
 # FUZZY + REGEX MATCHER
 def fuzzy_regex_match(text, patterns, threshold=0.75):
-	"""
-	Returns True if text matches regex OR is fuzzily similar
-	"""
-	text = text.lower().strip()
+    """
+    Returns True if text matches regex OR is fuzzily similar
+    """
+    text = text.lower().strip()
 
-	for pat in patterns:
-		# Direct regex match
-		if re.search(pat, text, flags=re.I):
-			return True
+    for pat in patterns:
+        # Direct regex match
+        if re.search(pat, text, flags=re.I):
+            return True
 
-		# Fuzzy similarity fallback
-		core = re.sub(r'[\\b\\(\\)\\?\\|]', '', pat)
-		ratio = SequenceMatcher(None, text, core).ratio()
-		if ratio >= threshold:
-			return True
+        # Fuzzy similarity fallback
+        core = re.sub(r'[\\b\\(\\)\\?\\|]', '', pat)
+        ratio = SequenceMatcher(None, text, core).ratio()
+        if ratio >= threshold:
+            return True
 
-	return False
+    return False
 
 def clean_by_majority_structure(df, max_gap_cap=4):
-	try:
-		def max_nan_gap(series):
-			max_gap = 0
-			count = 0
-			found_value = False
+    try:
+        def max_nan_gap(series):
+            max_gap = 0
+            count = 0
+            found_value = False
 
-			for val in series.values:
-				if not pd.isna(val):
-					if found_value:
-						max_gap = max(max_gap, count)
-					count = 0
-					found_value = True
-				else:
-					if found_value:
-						count += 1
-			return max_gap
+            for val in series.values:
+                if not pd.isna(val):
+                    if found_value:
+                        max_gap = max(max_gap, count)
+                    count = 0
+                    found_value = True
+                else:
+                    if found_value:
+                        count += 1
+            return max_gap
 
-		results = {col: max_nan_gap(df[col]) for col in df.columns}
-		max_gap = max(results.values())
+        results = {col: max_nan_gap(df[col]) for col in df.columns}
+        max_gap = max(results.values())
 
-		# Cap max_gap
-		if max_gap > max_gap_cap:
-			max_gap = max_gap_cap
+        # Cap max_gap
+        if max_gap > max_gap_cap:
+            max_gap = max_gap_cap
 
-		df = df.replace("", np.nan)
-		df_copy = df.copy()
+        df = df.replace("", np.nan)
+        df_copy = df.copy()
 
-		original_cols = list(df_copy.columns)
-		col_positions = {col: idx for idx, col in enumerate(original_cols)}
+        original_cols = list(df_copy.columns)
+        col_positions = {col: idx for idx, col in enumerate(original_cols)}
 
-		# Step 3: Find last non-null position (right to left)
-		def last_valid_position(row,nan_threshold):
-			gap=nan_threshold
-			for col in reversed(original_cols):
-				if not pd.isna(row[col]):
-					gap=nan_threshold
-					return col_positions[col]
-				elif pd.isna(row[col]) and nan_threshold > 0:
-					if pd.isna(row[col]): #and pd.isna(row[row.index[0]])
-						gap -= 1
-						return col_positions[col] 
-			return np.nan  # temporary, will fix later
+        # Step 3: Find last non-null position (right to left)
+        def last_valid_position(row,nan_threshold):
+            gap=nan_threshold
+            for col in reversed(original_cols):
+                if not pd.isna(row[col]):
+                    gap=nan_threshold
+                    return col_positions[col]
+                elif pd.isna(row[col]) and nan_threshold > 0:
+                    if pd.isna(row[col]): #and pd.isna(row[row.index[0]])
+                        gap -= 1
+                        return col_positions[col] 
+            return np.nan  # temporary, will fix later
 
-		# Identify the last data-containing column for every row
-		df_copy['_last_pos'] = df_copy.apply(
-		lambda row: last_valid_position(row, max_gap),
-		axis=1
-		)
+        # Identify the last data-containing column for every row
+        df_copy['_last_pos'] = df_copy.apply(
+        lambda row: last_valid_position(row, max_gap),
+        axis=1
+        )
 
-		majority_pos = df_copy["_last_pos"].mode()[0]
-		df_copy["_last_pos"] = df_copy["_last_pos"].fillna(majority_pos)
+        majority_pos = df_copy["_last_pos"].mode()[0]
+        df_copy["_last_pos"] = df_copy["_last_pos"].fillna(majority_pos)
 
-		csv_outputs = {}
+        csv_outputs = {}
 
-		groups = list(df_copy.groupby("_last_pos"))
+        groups = list(df_copy.groupby("_last_pos"))
 
-		# Sort groups by dataframe length (descending)
-		groups_sorted = sorted(groups, key=lambda x: len(x[1]), reverse=True)
+        # Sort groups by dataframe length (descending)
+        groups_sorted = sorted(groups, key=lambda x: len(x[1]), reverse=True)
 
-		for pos, group in groups_sorted:
-			group_df = group.drop(columns=["_last_pos"]).reset_index(drop=True)
+        for pos, group in groups_sorted:
+            group_df = group.drop(columns=["_last_pos"]).reset_index(drop=True)
 
-			csv_buffer = StringIO()
-			group_df.to_csv(csv_buffer, index=False)
+            csv_buffer = StringIO()
+            group_df.to_csv(csv_buffer, index=False)
 
-			csv_outputs[f"shape_{int(pos)}"] = csv_buffer.getvalue()
+            csv_outputs[f"shape_{int(pos)}"] = csv_buffer.getvalue()
 
-			# -------- Save different structures --------
-		# with pd.ExcelWriter("output.xlsx", engine="xlsxwriter") as writer:
+            # -------- Save different structures --------
+        # with pd.ExcelWriter("output.xlsx", engine="xlsxwriter") as writer:
 
-		# 	for pos, group in df_copy.groupby("_last_pos"):
-		# 		sheet_name = f"shape_{int(pos)}"
-		# 		group.drop(columns=["_last_pos"]).reset_index(drop=True).to_excel(
-		# 			writer, sheet_name=sheet_name, index=False
-		# 		)
+        # 	for pos, group in df_copy.groupby("_last_pos"):
+        # 		sheet_name = f"shape_{int(pos)}"
+        # 		group.drop(columns=["_last_pos"]).reset_index(drop=True).to_excel(
+        # 			writer, sheet_name=sheet_name, index=False
+        # 		)
 
-		# majority cleaned dataframe
-		df_clean = df_copy[df_copy["_last_pos"] == majority_pos].copy()
-		df_clean.drop(columns=["_last_pos"], inplace=True)
-		df_clean.reset_index(drop=True, inplace=True)
+        # majority cleaned dataframe
+        df_clean = df_copy[df_copy["_last_pos"] == majority_pos].copy()
+        df_clean.drop(columns=["_last_pos"], inplace=True)
+        df_clean.reset_index(drop=True, inplace=True)
 
-		return df_clean, csv_outputs
+        return df_clean, csv_outputs
 
-	except Exception as e:
-		csv_outputs = {}
-		csv_buffer = StringIO()
-		df.to_csv(csv_buffer, index=False)
+    except Exception as e:
+        csv_outputs = {}
+        csv_buffer = StringIO()
+        df.to_csv(csv_buffer, index=False)
 
-		csv_outputs[f"defaultshape"] = csv_buffer.getvalue()
-		
-		return df , csv_outputs
+        csv_outputs[f"defaultshape"] = csv_buffer.getvalue()
+        
+        return df , csv_outputs
 
 def drop_last_rows(df):
-	# Step 1: Read CSV
-	# df = pd.read_csv(file_path, header=None, dtype=str)
+    # Step 1: Read CSV
+    # df = pd.read_csv(file_path, header=None, dtype=str)
 
-	# Convert "" to NaN
-	df.replace('""', np.nan, inplace=True)
+    # Convert "" to NaN
+    df.replace('""', np.nan, inplace=True)
 
-	# Drop rows where all values are NaN
-	df.dropna(how='all', inplace=True)
+    # Drop rows where all values are NaN
+    df.dropna(how='all', inplace=True)
 
     # Debug file (optional)
     # df.to_csv("after_dropna.csv", index=False)
 
-	# Reset index
-	df.reset_index(drop=True, inplace=True)
+    # Reset index
+    df.reset_index(drop=True, inplace=True)
 
-	# Convert dataframe to list of rows
-	rows = df.values.tolist()
+    # Convert dataframe to list of rows
+    rows = df.values.tolist()
 
-	index_list = []
+    index_list = []
 
-	# Inline function logic for shape
-	def get_shape(row):
-		last_valid_idx = -1
-		for idx in range(len(row) - 1, -1, -1):
-			if pd.notna(row[idx]):
-				last_valid_idx = idx
-				break
-		return last_valid_idx + 1 if last_valid_idx != -1 else 0
+    # Inline function logic for shape
+    def get_shape(row):
+        last_valid_idx = -1
+        for idx in range(len(row) - 1, -1, -1):
+            if pd.notna(row[idx]):
+                last_valid_idx = idx
+                break
+        return last_valid_idx + 1 if last_valid_idx != -1 else 0
 
-	# Step 2: Initialize pointers
-	i = 0
-	base_shape = get_shape(rows[i])
+    # Step 2: Initialize pointers
+    i = 0
+    base_shape = get_shape(rows[i])
 
-	k = 1
+    k = 1
 
-	while k < len(rows):
-		current_shape = get_shape(rows[k])
+    while k < len(rows):
+        current_shape = get_shape(rows[k])
 
-		if current_shape == base_shape:
-			k += 1
-			continue
-		else:
-			j = k  # as per your updated logic
+        if current_shape == base_shape:
+            k += 1
+            continue
+        else:
+            j = k  # as per your updated logic
 
-			# Check next 4 rows
-			match_found = False
-			for future in range(k + 1, min(k + 5, len(rows))):
-				future_shape = get_shape(rows[future])
+            # Check next 4 rows
+            match_found = False
+            for future in range(k + 1, min(k + 5, len(rows))):
+                future_shape = get_shape(rows[future])
 
-				if future_shape == base_shape:
-					match_found = True
-					break
+                if future_shape == base_shape:
+                    match_found = True
+                    break
 
-			if not match_found:
-				index_list.append(j)
+            if not match_found:
+                index_list.append(j)
 
-			k += 1
+            k += 1
 
-	# Drop detected rows
-	cleaned_df = df.drop(index=index_list).reset_index(drop=True)
+    # Drop detected rows
+    cleaned_df = df.drop(index=index_list).reset_index(drop=True)
 
-	return cleaned_df, index_list
+    return cleaned_df, index_list
 
 # HEADER ROW DETECTOR
 def detect_header_row(df_raw):
-	"""
-	Detects header row index using fuzzy + regex logic.
-	Returns row index or None.
-	"""
-	for i, row in df_raw.iterrows():
+    """
+    Detects header row index using fuzzy + regex logic.
+    Returns row index or None.
+    """
+    for i, row in df_raw.iterrows():
 
-		# Normalize row values
-		row_values = [
-			str(cell).strip().lower()
-			for cell in row
-			if str(cell).strip() not in ["", "nan", "none"]
-		]
+        # Normalize row values
+        row_values = [
+            str(cell).strip().lower()
+            for cell in row
+            if str(cell).strip() not in ["", "nan", "none"]
+        ]
 
-		# Skip very small rows
-		if len(row_values) < 3:
-			continue
+        # Skip very small rows
+        if len(row_values) < 3:
+            continue
 
-		# Remove numeric-only cells
-		non_numeric = [
-			v for v in row_values
-			if not re.fullmatch(r'-?\d+(\.\d+)?', v.replace(',', ''))
-		]
+        # Remove numeric-only cells
+        non_numeric = [
+            v for v in row_values
+            if not re.fullmatch(r'-?\d+(\.\d+)?', v.replace(',', ''))
+        ]
 
-		# Must have enough non-numeric cells
-		if len(non_numeric) < len(row) // 2:
-			continue
+        # Must have enough non-numeric cells
+        if len(non_numeric) < len(row) // 2:
+            continue
 
 
-		# Count fuzzy header matches
-		header_hits = sum(
-			fuzzy_regex_match(val, HEADER_REGEX)
-			for val in non_numeric
-		)
+        # Count fuzzy header matches
+        header_hits = sum(
+            fuzzy_regex_match(val, HEADER_REGEX)
+            for val in non_numeric
+        )
 
-		# Header confidence threshold
-		confidence = header_hits / max(len(non_numeric), 1)
+        # Header confidence threshold
+        confidence = header_hits / max(len(non_numeric), 1)
 
-		if header_hits >= 2 and confidence >= 0.4:
-			return i
+        if header_hits >= 2 and confidence >= 0.4:
+            return i
 
-	return None
+    return None
 
 
 def is_partial_row(row):
-	"""
-	Check if a row is a partial row (only contains narration/description)
-	"""
+    """
+    Check if a row is a partial row (only contains narration/description)
+    """
 
-	has_amount = any(
-		any(k in col.lower() for k in ['credit', 'debit', 'amount', 'balance'])
-		and pd.notnull(row[col]) and str(row[col]).strip()
-		for col in row.index
-	)
+    has_amount = any(
+        any(k in col.lower() for k in ['credit', 'debit', 'amount', 'balance'])
+        and pd.notnull(row[col]) and str(row[col]).strip()
+        for col in row.index
+    )
 
-	has_narration = any(
-		any(k in col.lower() for k in ['narration', 'description', 'details'])
-		and pd.notnull(row[col]) and str(row[col]).strip()
-		for col in row.index
-	)
-	
+    has_narration = any(
+        any(k in col.lower() for k in ['narration', 'description', 'details'])
+        and pd.notnull(row[col]) and str(row[col]).strip()
+        for col in row.index
+    )
+    
 
-	return  not has_amount and has_narration
+    return  not has_amount and has_narration
 
 
 # def remove_duplicate_column(df):
@@ -280,1125 +280,1170 @@ def is_partial_row(row):
 #     Remove duplicate columns and drop rows that contain
 #     at least 2 column names (fuzzy match >= 90%)
 #     """
-	
+    
 #     # 1️⃣ Remove duplicate columns
 #     df = df.loc[:, ~df.columns.duplicated()]
-	
+    
 #     # Normalize column headers
 #     normalized_headers = [
 #         re.sub(r'\s+', '', str(col)).strip().lower()
 #         for col in df.columns
 #     ]
-	
+    
 #     print("Normalized Headers:", normalized_headers)
 
 #     def row_contains_multiple_headers(row):
 #         match_count = 0
-		
+        
 #         for cell in row:
 #             norm_cell = re.sub(r'\s+', '', str(cell)).strip().lower()
-			
+            
 #             for header in normalized_headers:
 #                 similarity = fuzz.ratio(norm_cell, header)
-				
+                
 #                 if similarity >= 90:
 #                     match_count += 1
 #                     break  # avoid double count for same cell
-			
+            
 #             if match_count >= 3:
 #                 return True
-		
+        
 #         return False
 
 #     # 2️⃣ Drop rows where >= 2 headers matched
 #     df = df[~df.apply(row_contains_multiple_headers)]
-	
+    
 #     return df
 
 def remove_duplicate_column(df, match_threshold=2):
-	"""
-	Removes duplicate column names and drops rows that are essentially 
-	repeated headers (common in PDF/OCR exports).
-	"""
-	
-	# 1️⃣ Ensure Column Names are Unique (Fixes the AttributeError you had earlier)
-	# This keeps the first occurrence and removes subsequent duplicates
-	df = df.loc[:, ~df.columns.duplicated()].copy()
-	
-	# 2️⃣ Pre-normalize headers once (instead of inside the loop)
-	# We remove whitespace and lowercase them for comparison
-	normalized_headers = [
-		re.sub(r'\s+', '', str(col)).strip().lower()
-		for col in df.columns
-	]
+    """
+    Removes duplicate column names and drops rows that are essentially 
+    repeated headers (common in PDF/OCR exports).
+    """
+    
+    # 1️⃣ Ensure Column Names are Unique (Fixes the AttributeError you had earlier)
+    # This keeps the first occurrence and removes subsequent duplicates
+    df = df.loc[:, ~df.columns.duplicated()].copy()
+    
+    # 2️⃣ Pre-normalize headers once (instead of inside the loop)
+    # We remove whitespace and lowercase them for comparison
+    normalized_headers = [
+        re.sub(r'\s+', '', str(col)).strip().lower()
+        for col in df.columns
+    ]
 
-	def is_repeated_header_row(row):
-		# 🟢 RESET: match_count starts at 0 for EVERY new row
-		match_count = 0
-		
-		# Convert row to list of strings and clean them
-		cells = [re.sub(r'\s+', '', str(cell)).strip().lower() for cell in row if pd.notnull(cell)]
-		
-		for cell in cells:
-			# OPTIMIZATION: Check for exact match first (instant) 
-			# before trying fuzzy match (slow)
-			if cell in normalized_headers:
-				match_count += 1
-			else:
-				# Only fuzzy match if cell isn't an exact match
-				for header in normalized_headers:
-					if fuzz.ratio(cell, header) >= 90:
-						match_count += 1
-						break  # Stop checking headers for this specific cell
-			
-			# 3️⃣ SHORT CIRCUIT: If we already hit the threshold, stop checking this row
-			if match_count >= match_threshold:
-				return True
-		
-		return False
+    def is_repeated_header_row(row):
+        # 🟢 RESET: match_count starts at 0 for EVERY new row
+        match_count = 0
+        
+        # Convert row to list of strings and clean them
+        cells = [re.sub(r'\s+', '', str(cell)).strip().lower() for cell in row if pd.notnull(cell)]
+        
+        for cell in cells:
+            # OPTIMIZATION: Check for exact match first (instant) 
+            # before trying fuzzy match (slow)
+            if cell in normalized_headers:
+                match_count += 1
+            else:
+                # Only fuzzy match if cell isn't an exact match
+                for header in normalized_headers:
+                    if fuzz.ratio(cell, header) >= 90:
+                        match_count += 1
+                        break  # Stop checking headers for this specific cell
+            
+            # 3️⃣ SHORT CIRCUIT: If we already hit the threshold, stop checking this row
+            if match_count >= match_threshold:
+                return True
+        
+        return False
 
-	# 4️⃣ Filter the DataFrame
-	# df.apply calls our function row by row
-	mask = df.apply(is_repeated_header_row, axis=1)
-	df_cleaned = df[~mask].reset_index(drop=True)
-	
-	return df_cleaned
+    # 4️⃣ Filter the DataFrame
+    # df.apply calls our function row by row
+    mask = df.apply(is_repeated_header_row, axis=1)
+    df_cleaned = df[~mask].reset_index(drop=True)
+    
+    return df_cleaned
 
 
 def extract_amount(value, dr_cr=''):
-	"""
-	Extract amount with OCR error handling.
-	If ANY dot (.) is found, remove ALL dots and divide by 100.
-	If no dot is found, take as is.
-	"""
-	if pd.isna(value):
-		return ""
+    """
+    Extract amount with OCR error handling.
+    If ANY dot (.) is found, remove ALL dots and divide by 100.
+    If no dot is found, take as is.
+    """
+    if pd.isna(value):
+        return ""
 
-	text = str(value).lower().strip()
-	
-	text = text.replace('ï¼ˆ', '(').replace('ï¼‰', ')')
+    text = str(value).lower().strip()
+    
+    text = text.replace('ï¼ˆ', '(').replace('ï¼‰', ')')
 
-	# Check for negative sign (DR only)
-	is_negative = False
-	if text.startswith('-') or re.search(r'\bdr\b', text, re.I):
-		is_negative = True
+    # Check for negative sign (DR only)
+    is_negative = False
+    if text.startswith('-') or re.search(r'\bdr\b', text, re.I):
+        is_negative = True
 
-	# Remove brackets and minus
-	text = text.replace('-', '').replace('(', '').replace(')', '')
-	
-	# Remove CR/DR text based on parameter
-	if dr_cr == 'dr':
-		text = re.sub(r'cr', '', text, flags=re.I)
-	elif dr_cr == 'cr':
-		text = re.sub(r'dr', '', text, flags=re.I)
-	else:
-		text = re.sub(r'(cr|dr)', '', text, flags=re.I)
-	
-	# Replace colons and semicolons with dots (they are sometimes used as decimal separators)
-	text = re.sub(r'[:;]', '.', text)
-	
-	# Remove commas and spaces
-	text = text.replace(',', '').replace(' ', '')
-	
-	# Extract numeric part for digit counting
-	numeric_part = re.sub(r'[^0-9.]', '', text)
-	
-	# Remove all non-numeric characters except dots from main text
-	text = re.sub(r'[^\d.]', '', text)
-	
-	# If empty after cleaning, return empty
-	if not text:
-		return ""
-	
-	# Check if there are ANY dots
-	if '.' in numeric_part:
-		# Get the part after the last dot
-		last_dot_index = numeric_part.rfind('.')
-		after_last_dot = numeric_part[last_dot_index + 1:]
-		
-		# Count only digits after last dot
-		digits_after_last_dot = len(re.sub(r'[^0-9]', '', after_last_dot))
-		
-		# Dot found - remove ALL dots and divide appropriately
-		digits_only = text.replace('.', '')
-		
-		try:
-			if digits_only:
-				if digits_after_last_dot == 1:
-					amount = float(digits_only) / 10.0
-				else:
-					amount = float(digits_only) / 100.0
-				amount = round(amount, 2)
-				return -amount if is_negative else amount
-			else:
-				return ""
-		except:
-			return ""
-	else:
-		# No dot found - take as is (whole number)
-		try:
-			if text:  # Check if not empty
-				amount = float(text)
-				amount = round(amount, 2)
-				return -amount if is_negative else amount
-			else:
-				return ""
-		except:
-			return ""
+    # Remove brackets and minus
+    text = text.replace('-', '').replace('(', '').replace(')', '')
+    
+    # Remove CR/DR text based on parameter
+    if dr_cr == 'dr':
+        text = re.sub(r'cr', '', text, flags=re.I)
+    elif dr_cr == 'cr':
+        text = re.sub(r'dr', '', text, flags=re.I)
+    else:
+        text = re.sub(r'(cr|dr)', '', text, flags=re.I)
+    
+    # Replace colons and semicolons with dots (they are sometimes used as decimal separators)
+    text = re.sub(r'[:;]', '.', text)
+    
+    # Remove commas and spaces
+    text = text.replace(',', '').replace(' ', '')
+    
+    # Extract numeric part for digit counting
+    numeric_part = re.sub(r'[^0-9.]', '', text)
+    
+    # Remove all non-numeric characters except dots from main text
+    text = re.sub(r'[^\d.]', '', text)
+    
+    # If empty after cleaning, return empty
+    if not text:
+        return ""
+    
+    # Check if there are ANY dots
+    if '.' in numeric_part:
+        # Get the part after the last dot
+        last_dot_index = numeric_part.rfind('.')
+        after_last_dot = numeric_part[last_dot_index + 1:]
+        
+        # Count only digits after last dot
+        digits_after_last_dot = len(re.sub(r'[^0-9]', '', after_last_dot))
+        
+        # Dot found - remove ALL dots and divide appropriately
+        digits_only = text.replace('.', '')
+        
+        try:
+            if digits_only:
+                if digits_after_last_dot == 1:
+                    amount = float(digits_only) / 10.0
+                else:
+                    amount = float(digits_only) / 100.0
+                amount = round(amount, 2)
+                return -amount if is_negative else amount
+            else:
+                return ""
+        except:
+            return ""
+    else:
+        # No dot found - take as is (whole number)
+        try:
+            if text:  # Check if not empty
+                amount = float(text)
+                amount = round(amount, 2)
+                return -amount if is_negative else amount
+            else:
+                return ""
+        except:
+            return ""
 
 def parse_balance(value):
-	if pd.isna(value):
-		return ""
+    if pd.isna(value):
+        return ""
 
-	text = str(value).strip().upper()
+    text = str(value).strip().upper()
 
-	if text in ["", "NAN", "NONE"]:
-		return ""
+    if text in ["", "NAN", "NONE"]:
+        return ""
+    
+    if re.search(r'page|pg|age', text, re.IGNORECASE):
+        return ""
+    
+    # Detect DR / CR (balance-specific)
+    has_minus = '-' in text
+    is_dr = "DR" in text
+    is_cr = "CR" in text
 
-	# Detect DR / CR (balance-specific)
-	has_minus = '-' in text
-	is_dr = "DR" in text
-	is_cr = "CR" in text
+    # Remove DR / CR
+    # Remove CR/DR and any dots immediately after them
+    text = re.sub(r'(CR|DR)\.+', '', text, flags=re.I)
+    
 
-	# Remove DR / CR
-	# Remove CR/DR and any dots immediately after them
-	text = re.sub(r'(CR|DR)\.+', '', text, flags=re.I)
-	
+    # Remove commas and spaces
+    text = text.replace(',', '').replace(' ', '')
 
-	# Remove commas and spaces
-	text = text.replace(',', '').replace(' ', '')
+    # Keep minus in regex
+    nums = re.findall(r'-?[\d.]+', text)
+    if not nums:
+        return ""
 
-	# Keep minus in regex
-	nums = re.findall(r'-?[\d.]+', text)
-	if not nums:
-		return ""
+    raw = nums[0]
+    parts = raw.split('.')
 
-	raw = nums[0]
-	parts = raw.split('.')
+    # Multiple dot handling
+    if len(parts) > 2:
+        # 4.54.554 -> 454554
+        if len(parts[-1]) == 3:
+            raw = ''.join(parts)
+        # 5.328.28 -> 5328.28
+        else:
+            raw = ''.join(parts[:-1]) + '.' + parts[-1]
 
-	# Multiple dot handling
-	if len(parts) > 2:
-		# 4.54.554 -> 454554
-		if len(parts[-1]) == 3:
-			raw = ''.join(parts)
-		# 5.328.28 -> 5328.28
-		else:
-			raw = ''.join(parts[:-1]) + '.' + parts[-1]
+    # 2.444467 -> 24444.67
+    elif len(parts) == 2 and len(parts[1]) > 2:
+        digits = parts[0] + parts[1]
+        raw = digits[:-2] + '.' + digits[-2:]
 
-	# 2.444467 -> 24444.67
-	elif len(parts) == 2 and len(parts[1]) > 2:
-		digits = parts[0] + parts[1]
-		raw = digits[:-2] + '.' + digits[-2:]
+    try:
+        amount = float(raw)
 
-	try:
-		amount = float(raw)
+        # Balance sign logic (ONLY here)
+        if has_minus:
+            return -abs(amount)   # Explicit minus takes priority
+        elif is_dr:
+            return -amount
+        else:
+            # CR or unsigned balance
+            return amount
 
-		# Balance sign logic (ONLY here)
-		if has_minus:
-			return -abs(amount)   # Explicit minus takes priority
-		elif is_dr:
-			return -amount
-		else:
-			# CR or unsigned balance
-			return amount
+    except:
+        return ""
 
-	except:
-		return ""
+def fill_missing_balances(df):
+    """
+    Recompute balances for rows where Balance is missing (NaN)
+    using: Balance[i] = Balance[i-1] + Credit[i] + Debit[i]
+    """
+    if df.empty:
+        return df
 
+    # Ensure numeric
+    for col in ['Debits', 'Credits', 'Balance']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    if 'Balance' not in df.columns:
+        return df
+
+    # Find date column (optional, to skip non‑transaction rows)
+    date_col = None
+    for col in ['XN Date', 'Value Date']:
+        if col in df.columns:
+            date_col = col
+            break
+
+    filled = 0
+    for i in range(1, len(df)):
+        if pd.isna(df.at[i, 'Balance']):
+            # Optionally skip rows without a date
+            if date_col and (pd.isna(df.at[i, date_col]) or str(df.at[i, date_col]).strip() == ''):
+                continue
+
+            prev_bal = df.at[i-1, 'Balance'] if not pd.isna(df.at[i-1, 'Balance']) else 0.0
+            debit = df.at[i, 'Debits'] if 'Debits' in df.columns and not pd.isna(df.at[i, 'Debits']) else 0.0
+            credit = df.at[i, 'Credits'] if 'Credits' in df.columns and not pd.isna(df.at[i, 'Credits']) else 0.0
+
+            computed = round(prev_bal + credit + debit, 2)
+            df.at[i, 'Balance'] = computed
+            filled += 1
+
+    if filled:
+        # print(f"Filled {filled} missing balance(s) using previous balance + transaction.")
+        pass
+    return df
 
 def extract_amount_new(value):
-	"""
-	NEW FUNCTION: Extract amount with OCR error handling.
-	NEW FIXED LOGIC:
-	1. Clean the input string (remove non-numeric except dots, replace colons/semicolons with dots)
-	2. Extract only digits (0-9) for counting after decimal
-	3. If 1 digit → remove ALL dots, divide by 10
-	4. If 2+ digits → remove ALL dots, divide by 100
-	5. No dots → take as is
-	"""
-	if pd.isna(value) or value == "" or str(value).strip() == "":
-		return np.nan
-	
-	# Convert to string and clean
-	text = str(value).strip()
-	
-	# Handle negative
-	is_negative = False
-	if text.startswith('-') or '(' in text:
-		is_negative = True
-		text = re.sub(r'[-()]', '', text)
-	
-	# Remove CR/DR - but preserve for counting digits after decimal
-	# First extract the numeric part only for digit counting
-	numeric_part = re.sub(r'[^0-9.]', '', text)
-	
-	# Keep original text for full processing
-	clean_text = text
-	
-	# Remove CR/DR from the text to process
-	clean_text = re.sub(r'\b(cr|dr)\b', '', clean_text, flags=re.IGNORECASE)
-	
-	# Convert colons/semicolons to dots
-	clean_text = re.sub(r'[:;]', '.', clean_text)
-	
-	# Remove commas and spaces
-	clean_text = clean_text.replace(',', '').replace(' ', '')
-	
-	# Keep only digits and dots
-	clean_text = re.sub(r'[^\d.]', '', clean_text)
-	
-	if not clean_text:
-		return np.nan
-	
-	# Check for dots in the NUMERIC part (not in the text with CR/DR)
-	if '.' in numeric_part:
-		# Get the part after the last dot in the NUMERIC part
-		last_dot_index = numeric_part.rfind('.')
-		after_last_dot = numeric_part[last_dot_index + 1:]
-		
-		# Count only DIGITS (0-9) after last dot
-		digits_after_last_dot = len(re.sub(r'[^0-9]', '', after_last_dot))
-		
-		# Remove ALL dots from clean_text for calculation
-		digits_only = clean_text.replace('.', '')
-		
-		try:
-			if digits_only:  # Check if not empty
-				if digits_after_last_dot == 1:
-					# One digit after last dot → divide by 10
-					result = float(digits_only) / 10.0
-				elif digits_after_last_dot >= 2:
-					# Two or more digits after last dot → divide by 100
-					result = float(digits_only) / 100.0
-				else:
-					# No digits after dot (edge case)
-					result = float(digits_only)
-				
-				result = round(result, 2)
-				return -result if is_negative else result
-			else:
-				return np.nan
-		except:
-			return np.nan
-	else:
-		# No dots - take as is
-		try:
-			if clean_text:  # Check if not empty
-				result = float(clean_text)
-				result = round(result, 2)
-				return -result if is_negative else result
-			else:
-				return np.nan
-		except:
-			return np.nan
+    """
+    NEW FUNCTION: Extract amount with OCR error handling.
+    NEW FIXED LOGIC:
+    1. Clean the input string (remove non-numeric except dots, replace colons/semicolons with dots)
+    2. Extract only digits (0-9) for counting after decimal
+    3. If 1 digit → remove ALL dots, divide by 10
+    4. If 2+ digits → remove ALL dots, divide by 100
+    5. No dots → take as is
+    """
+    if pd.isna(value) or value == "" or str(value).strip() == "":
+        return np.nan
+    
+    # Convert to string and clean
+    text = str(value).strip()
+    
+    # Handle negative
+    is_negative = False
+    if text.startswith('-') or '(' in text:
+        is_negative = True
+        text = re.sub(r'[-()]', '', text)
+    
+    # Remove CR/DR - but preserve for counting digits after decimal
+    # First extract the numeric part only for digit counting
+    numeric_part = re.sub(r'[^0-9.]', '', text)
+    
+    # Keep original text for full processing
+    clean_text = text
+    
+    # Remove CR/DR from the text to process
+    clean_text = re.sub(r'\b(cr|dr)\b', '', clean_text, flags=re.IGNORECASE)
+    
+    # Convert colons/semicolons to dots
+    clean_text = re.sub(r'[:;]', '.', clean_text)
+    
+    # Remove commas and spaces
+    clean_text = clean_text.replace(',', '').replace(' ', '')
+    
+    # Keep only digits and dots
+    clean_text = re.sub(r'[^\d.]', '', clean_text)
+    
+    if not clean_text:
+        return np.nan
+    
+    # Check for dots in the NUMERIC part (not in the text with CR/DR)
+    if '.' in numeric_part:
+        # Get the part after the last dot in the NUMERIC part
+        last_dot_index = numeric_part.rfind('.')
+        after_last_dot = numeric_part[last_dot_index + 1:]
+        
+        # Count only DIGITS (0-9) after last dot
+        digits_after_last_dot = len(re.sub(r'[^0-9]', '', after_last_dot))
+        
+        # Remove ALL dots from clean_text for calculation
+        digits_only = clean_text.replace('.', '')
+        
+        try:
+            if digits_only:  # Check if not empty
+                if digits_after_last_dot == 1:
+                    # One digit after last dot → divide by 10
+                    result = float(digits_only) / 10.0
+                elif digits_after_last_dot >= 2:
+                    # Two or more digits after last dot → divide by 100
+                    result = float(digits_only) / 100.0
+                else:
+                    # No digits after dot (edge case)
+                    result = float(digits_only)
+                
+                result = round(result, 2)
+                return -result if is_negative else result
+            else:
+                return np.nan
+        except:
+            return np.nan
+    else:
+        # No dots - take as is
+        try:
+            if clean_text:  # Check if not empty
+                result = float(clean_text)
+                result = round(result, 2)
+                return -result if is_negative else result
+            else:
+                return np.nan
+        except:
+            return np.nan
 
 
 def clean_debit_credit(df):
-	"""
-	Decides whether to apply DR/CR-based split or single-column split.
-	Ensures only one strategy is used to prevent duplication.
-	"""
-	# Lowercase column names for flexible matching
-	cols_lower = [col.lower() for col in df.columns]
+    """
+    Decides whether to apply DR/CR-based split or single-column split.
+    Ensures only one strategy is used to prevent duplication.
+    """
+    # Lowercase column names for flexible matching
+    cols_lower = [col.lower() for col in df.columns]
  
-	#Detect already separated debit & credit columns
-	# --------------------------------------------------
-	has_debit_col = any(
-		col in ['debit', 'debits', 'withdrawal', 'dr', 'dr amount', 'withdrawals']
-		for col in cols_lower
-	)
+    #Detect already separated debit & credit columns
+    # --------------------------------------------------
+    has_debit_col = any(
+        col in ['debit', 'debits', 'withdrawal', 'dr', 'dr amount', 'withdrawals']
+        for col in cols_lower
+    )
 
-	# Detect separate Credit column
-	has_credit_col = any(
-		col in ['credit', 'credits', 'deposit', 'cr', 'cr amount', 'deposits','cramount']
-		for col in cols_lower
-	)
+    # Detect separate Credit column
+    has_credit_col = any(
+        col in ['credit', 'credits', 'deposit', 'cr', 'cr amount', 'deposits','cramount']
+        for col in cols_lower
+    )
 
-	# If both exist → already split
-	if has_debit_col and has_credit_col:
-		# print("Already split Debit & Credit columns detected.")
-		return df
+    # If both exist → already split
+    if has_debit_col and has_credit_col:
+        # print("Already split Debit & Credit columns detected.")
+        return df
 
-	regex_drcr = any(
-		re.fullmatch(
-			r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|cr/dr|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit|type|transaction\s*type|dr\s*/\s*cr|cr\s*/\s*dr)',
-			col,
-			flags=re.IGNORECASE
-		)
-		for col in df.columns
-	)
+    regex_drcr = any(
+        re.fullmatch(
+            r'(?:dr[/|]cr|cr[/|]dr|dricr|dr_cr|drcr|dr\.|cr\.|cr/dr|Debit[/|]Credit|Credit[/|]Debit|Debit\s*/\s*Credit|Credit\s*/\s*Debit|type|transaction\s*type|dr\s*/\s*cr|cr\s*/\s*dr)',
+            col,
+            flags=re.IGNORECASE
+        )
+        for col in df.columns
+    )
 
-	pattern = re.compile(
-	r'\bamount\b.*|\ba\s*mount\b.*',
-	re.IGNORECASE
-	)
+    pattern = re.compile(
+    r'\bamount\b.*|\ba\s*mount\b.*',
+    re.IGNORECASE
+    )
 
-	type_drcr = any(
+    type_drcr = any(
 
-		(col.lower() in ['type', 'txn type', 'transaction type', 'cr/dr']) 
-		or pattern.search(col.lower())
-		for col in df.columns
-	)
+        (col.lower() in ['type', 'txn type', 'transaction type', 'cr/dr']) 
+        or pattern.search(col.lower())
+        for col in df.columns
+    )
 
-	has_drcr = regex_drcr and type_drcr
+    has_drcr = regex_drcr and type_drcr
 
-	has_mixed_amount = any(
-		re.search(r'withdrawal\s*\(?\s*dr\s*\)?\s*[/|\\-]\s*deposit\s*\(?\s*cr\s*\)?|debit.*credit|dr.*cr|amount|\ba\s*mount\b.*', col, re.IGNORECASE) for col in df.columns
-	)	
-	if has_drcr:
-		df = parse_debit_credit_split_safe(df)
-	elif has_mixed_amount:
-		df = split_drcr_from_amount_column(df)
-	return df
+    has_mixed_amount = any(
+        re.search(r'withdrawal\s*\(?\s*dr\s*\)?\s*[/|\\-]\s*deposit\s*\(?\s*cr\s*\)?|debit.*credit|dr.*cr|amount|\ba\s*mount\b.*', col, re.IGNORECASE) for col in df.columns
+    )	
+    if has_drcr:
+        df = parse_debit_credit_split_safe(df)
+    elif has_mixed_amount:
+        df = split_drcr_from_amount_column(df)
+    return df
 
 
 def split_drcr_from_amount_column(df):
-	"""
-	Handles columns like:
-	Withdrawal(Dr)/ Deposit(Cr)
-	"""
+    """
+    Handles columns like:
+    Withdrawal(Dr)/ Deposit(Cr)
+    """
 
-	withdraw_cols = [c for c in df.columns if re.search(r'withdraw', c, re.I)]
-	deposit_cols = [c for c in df.columns if re.search(r'deposit', c, re.I)]
+    withdraw_cols = [c for c in df.columns if re.search(r'withdraw', c, re.I)]
+    deposit_cols = [c for c in df.columns if re.search(r'deposit', c, re.I)]
 
-	# If both exist AND they are different columns → skip split
-	if withdraw_cols and deposit_cols and withdraw_cols[0] != deposit_cols[0]:
-		return df
+    # If both exist AND they are different columns → skip split
+    if withdraw_cols and deposit_cols and withdraw_cols[0] != deposit_cols[0]:
+        return df
 
-	# Detect unified amount column
-	amount_col = next(
-		(c for c in df.columns if re.search(r'withdrawal\s*\(dr\)\s*/\s*deposit\s*\(cr\)|amount|amt|withdrawal\s*\(?\s*dr\s*[/\\]?\s*deposit\s*\(?\s*cr\s*\)?|\ba\s*mount\b.*', c, re.I)),
-		None
-	)
-	if not amount_col:
-		return df
+    # Detect unified amount column
+    amount_col = next(
+        (c for c in df.columns if re.search(r'withdrawal\s*\(dr\)\s*/\s*deposit\s*\(cr\)|amount|amt|withdrawal\s*\(?\s*dr\s*[/\\]?\s*deposit\s*\(?\s*cr\s*\)?|\ba\s*mount\b.*', c, re.I)),
+        None
+    )
+    if not amount_col:
+        return df
 
-	def split_val(x):
-		if pd.isna(x):
-			return "", ""
+    def split_val(x):
+        if pd.isna(x):
+            return "", ""
 
-		text = str(x)
+        text = str(x)
 
-		amt = extract_amount(text)
+        amt = extract_amount(text)
 
-		# STRICT detection – no guessing
-		if re.search(r'\(\s*dr\s*\)|\bdr\b|dr', text, re.I):
-			return amt, ""
-		elif re.search(r'\(\s*cr\s*\)|\bcr\b|cr', text, re.I):
-			return "", amt
-		else:
-			# neither DR nor CR → leave blank
-			return "", ""
+        # STRICT detection – no guessing
+        if re.search(r'\(\s*dr\s*\)|\bdr\b|dr', text, re.I):
+            return amt, ""
+        elif re.search(r'\(\s*cr\s*\)|\bcr\b|cr', text, re.I):
+            return "", amt
+        else:
+            # neither DR nor CR → leave blank
+            return "", ""
 
-	df[['Debits', 'Credits']] = df[amount_col].apply(
-		lambda x: pd.Series(split_val(x))
-	)
+    df[['Debits', 'Credits']] = df[amount_col].apply(
+        lambda x: pd.Series(split_val(x))
+    )
 
-	df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
-	df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce')
-	return df
+    df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
+    df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce')
+    return df
 
 
 def normalize_drcr_value(val):
-	val = str(val).strip().upper()
-	val = val.replace('0R', 'CR')  # Fix misread "0R" instead of "CR"
-	val = val.replace('Dr', 'DR').replace('Cr', 'CR')
-	val = re.sub(r'\s+', '', val)  # Remove all whitespace
-	val = str(val).strip().lower()
-	mapping = {
-			'credit': 'CR', 'cr': 'CR', 'cr.': 'CR', 'c': 'CR','(Cr)': 'CR','(Cr': 'CR', 'Cr)':'CR',
-			'debit': 'DR', 'dr': 'DR', 'dr.': 'DR', 'd': 'DR','(Dr)': 'Dr', '(Dr': 'DR', 'Cr)':'DR'
-	}
-	return mapping.get(val, '')
+    val = str(val).strip().upper()
+    val = val.replace('0R', 'CR')  # Fix misread "0R" instead of "CR"
+    val = val.replace('Dr', 'DR').replace('Cr', 'CR')
+    val = re.sub(r'\s+', '', val)  # Remove all whitespace
+    val = str(val).strip().lower()
+    mapping = {
+            'credit': 'CR', 'cr': 'CR', 'cr.': 'CR', 'c': 'CR','(Cr)': 'CR','(Cr': 'CR', 'Cr)':'CR',
+            'debit': 'DR', 'dr': 'DR', 'dr.': 'DR', 'd': 'DR','(Dr)': 'Dr', '(Dr': 'DR', 'Cr)':'DR'
+    }
+    return mapping.get(val, '')
 
 
 
 def parse_debit_credit_split_safe(df):
-	"""
-	Split debit/credit safely.
-	Handles:
-	- Single DR/CR column
-	- Two DR/CR columns (Amount + Balance)
-	- Type column fallback
-	"""
+    """
+    Split debit/credit safely.
+    Handles:
+    - Single DR/CR column
+    - Two DR/CR columns (Amount + Balance)
+    - Type column fallback
+    """
 
 
-	columns = list(df.columns)
+    columns = list(df.columns)
 
-	# -----------------------------
-	# Detect DR/CR columns (by index, not name)
-	# -----------------------------
-	drcr_indexes = [
-		i for i, col in enumerate(columns)
-		if re.fullmatch(
-			r'(?:'
-			r'DR[/|]CR|CR[/|]DR|'
-			r'DR[_]?CR|DRCR|DRICR|'
-			r'DR\.?|CR\.?|'
-			r'Debit[/|]Credit|Credit[/|]Debit|'
-			r'Debit\s*/\s*Credit|Credit\s*/\s*Debit|dr\s*/\s*cr|cr\s*/\s*dr'
-			r')',
-			col.strip(),
-			flags=re.IGNORECASE
-		)
-	]
-
-
-	# -----------------------------
-	# Detect Type column (fallback)
-	# -----------------------------
-	type_index = None
-	for i, col in enumerate(columns):
-		if col.strip().lower() in [
-			'type', 'txn type', 'transaction type', 'cr/dr'
-		]:
-			type_index = i
-			break
-
-	# If nothing exists → exit safely
-	if not drcr_indexes and type_index is None:
-		return df
-
-	# -----------------------------
-	# Detect Amount column
-	# -----------------------------
-	amount_col = None
-	for col in df.columns:
-		if re.search(r'amount|amt|transaction.*amount|amount\s*\(.*\)|\bamount\b.*|\ba\s*mount\b.*', col.lower()):
-			amount_col = col
-			break
-	
-
-	if not amount_col:
-		return df
-
-	# -----------------------------
-	# Rename DR/CR columns by POSITION (IMPORTANT FIX)
-	# -----------------------------
-	cols = list(df.columns)
-
-	if len(drcr_indexes) >= 2:
-		cols[drcr_indexes[0]] = 'AMOUNT_DRCR'
-		cols[drcr_indexes[1]] = 'BALANCE_DRCR'
-
-	elif len(drcr_indexes) == 1:
-		cols[drcr_indexes[0]] = 'AMOUNT_DRCR'
-
-	elif type_index is not None:
-		cols[type_index] = 'AMOUNT_DRCR'
-
-	df.columns = cols
+    # -----------------------------
+    # Detect DR/CR columns (by index, not name)
+    # -----------------------------
+    drcr_indexes = [
+        i for i, col in enumerate(columns)
+        if re.fullmatch(
+            r'(?:'
+            r'DR[/|]CR|CR[/|]DR|'
+            r'DR[_]?CR|DRCR|DRICR|'
+            r'DR\.?|CR\.?|'
+            r'Debit[/|]Credit|Credit[/|]Debit|'
+            r'Debit\s*/\s*Credit|Credit\s*/\s*Debit|dr\s*/\s*cr|cr\s*/\s*dr'
+            r')',
+            col.strip(),
+            flags=re.IGNORECASE
+        )
+    ]
 
 
-	# -----------------------------
-	# Normalize DR/CR values
-	# -----------------------------
-	if 'AMOUNT_DRCR' in df.columns:
-		df['AMOUNT_DRCR'] = df['AMOUNT_DRCR'].apply(normalize_drcr_value)
+    # -----------------------------
+    # Detect Type column (fallback)
+    # -----------------------------
+    type_index = None
+    for i, col in enumerate(columns):
+        if col.strip().lower() in [
+            'type', 'txn type', 'transaction type', 'cr/dr'
+        ]:
+            type_index = i
+            break
 
-	if 'BALANCE_DRCR' in df.columns:
-		df['BALANCE_DRCR'] = df['BALANCE_DRCR'].apply(normalize_drcr_value)
+    # If nothing exists → exit safely
+    if not drcr_indexes and type_index is None:
+        return df
 
-	# -----------------------------
-	# Clean Amount
-	# -----------------------------
-	df['Amount'] = df[amount_col].apply(extract_amount)
+    # -----------------------------
+    # Detect Amount column
+    # -----------------------------
+    amount_col = None
+    for col in df.columns:
+        if re.search(r'amount|amt|transaction.*amount|amount\s*\(.*\)|\bamount\b.*|\ba\s*mount\b.*', col.lower()):
+            amount_col = col
+            break
+    
 
-	# -----------------------------
-	# Split Debit / Credit
-	# -----------------------------
-	if 'AMOUNT_DRCR' in df.columns:
+    if not amount_col:
+        return df
 
-		df['Debits'] = df.apply(
-			lambda r: r['Amount'] if r['AMOUNT_DRCR'] == 'DR' else None,
-			axis=1
-		)
-		
+    # -----------------------------
+    # Rename DR/CR columns by POSITION (IMPORTANT FIX)
+    # -----------------------------
+    cols = list(df.columns)
 
-		df['Credits'] = df.apply(
-			lambda r: r['Amount'] if r['AMOUNT_DRCR'] == 'CR' else None,
-			axis=1
-		)
-		
+    if len(drcr_indexes) >= 2:
+        cols[drcr_indexes[0]] = 'AMOUNT_DRCR'
+        cols[drcr_indexes[1]] = 'BALANCE_DRCR'
 
-		df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
-		df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce')
-		
+    elif len(drcr_indexes) == 1:
+        cols[drcr_indexes[0]] = 'AMOUNT_DRCR'
 
-	return df
+    elif type_index is not None:
+        cols[type_index] = 'AMOUNT_DRCR'
+
+    df.columns = cols
+
+
+    # -----------------------------
+    # Normalize DR/CR values
+    # -----------------------------
+    if 'AMOUNT_DRCR' in df.columns:
+        df['AMOUNT_DRCR'] = df['AMOUNT_DRCR'].apply(normalize_drcr_value)
+
+    if 'BALANCE_DRCR' in df.columns:
+        df['BALANCE_DRCR'] = df['BALANCE_DRCR'].apply(normalize_drcr_value)
+
+    # -----------------------------
+    # Clean Amount
+    # -----------------------------
+    df['Amount'] = df[amount_col].apply(extract_amount)
+
+    # -----------------------------
+    # Split Debit / Credit
+    # -----------------------------
+    if 'AMOUNT_DRCR' in df.columns:
+
+        df['Debits'] = df.apply(
+            lambda r: r['Amount'] if r['AMOUNT_DRCR'] == 'DR' else None,
+            axis=1
+        )
+        
+
+        df['Credits'] = df.apply(
+            lambda r: r['Amount'] if r['AMOUNT_DRCR'] == 'CR' else None,
+            axis=1
+        )
+        
+
+        df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
+        df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce')
+        
+
+    return df
 
 def merge_balance_with_adjacent_type(df):
-	"""
-	Merge Balance with DR/CR (or TYPE) column
-	ONLY if that column is immediately after Balance.
-	
-	Example:
-		3000 | DR  -> 3000DR
-		4322 | CR  -> 4322CR
-	"""
+    """
+    Merge Balance with DR/CR (or TYPE) column
+    ONLY if that column is immediately after Balance.
+    
+    Example:
+        3000 | DR  -> 3000DR
+        4322 | CR  -> 4322CR
+    """
 
-	if 'Balance' not in df.columns:
-		# print("No Balance column found.")
-		return df
+    if 'Balance' not in df.columns:
+        # print("No Balance column found.")
+        return df
 
-	cols = list(df.columns)
-	balance_index = cols.index('Balance')
+    cols = list(df.columns)
+    balance_index = cols.index('Balance')
 
-	# Check next column exists
-	if balance_index + 1 >= len(cols):
-		# print("No column after Balance. Skipping merge.")
-		return df
+    # Check next column exists
+    if balance_index + 1 >= len(cols):
+        # print("No column after Balance. Skipping merge.")
+        return df
 
-	next_col = cols[balance_index + 1]
+    next_col = cols[balance_index + 1]
 
-	normalized_next = next_col.strip().lower()
+    normalized_next = next_col.strip().lower()
 
-	valid_names = ['balance_drcr', 'drcr', 'type', 'dr/cr', 'cr/dr']
+    valid_names = ['balance_drcr', 'drcr', 'type', 'dr/cr', 'cr/dr']
 
-	if normalized_next not in valid_names:
-		# print(f"{next_col} is not a valid DR/CR column. Skipping merge.")
-		return df
+    if normalized_next not in valid_names:
+        # print(f"{next_col} is not a valid DR/CR column. Skipping merge.")
+        return df
 
-	# print(f"Merging Balance with adjacent column: {next_col}")
+    # print(f"Merging Balance with adjacent column: {next_col}")
 
-	# Clean values
-	df['Balance'] = df['Balance'].fillna('').astype(str).str.strip()
-	df[next_col] = df[next_col].fillna('').astype(str).str.strip()
+    # Clean values
+    df['Balance'] = df['Balance'].fillna('').astype(str).str.strip()
+    df[next_col] = df[next_col].fillna('').astype(str).str.strip()
 
-	# Merge only where balance exists
-	mask = df['Balance'] != ''
-	df.loc[mask, 'Balance'] = df.loc[mask, 'Balance'] + df.loc[mask, next_col]
+    # Merge only where balance exists
+    mask = df['Balance'] != ''
+    df.loc[mask, 'Balance'] = df.loc[mask, 'Balance'] + df.loc[mask, next_col]
 
 
-	return df
+    return df
 
 def normalize_headers(df):
-	"""
-	Normalize column headers to standard names
-	"""
-	headers = {
-		"Value Date": {"Value Date", "VAL DATE", "Val Date", "VALUE DT","ValueDate", "VALDATE"},
-		"XN Date": {"Post.Dt","Date(ValueDate)","Date","Txn Posted Date","TransactionDate &Time","Tran Date","GL. Date","Date Day/Night","TransactionDate","TxnDate& Time","DAT VALUE", "Date(Value Date","Date& Time", "Post Date", "PostDate", "TRANSACTION DATE", "Tran Date", "TranDate","XN Date", "Transaction date", "Txn Date", "Post date","ate", "DATE", "Transaction Date", "TRAN DATE", "TRANDATE","Transactio n Date"},
-		"Cheque No": {"Cheque/Refer enceNo","Cheque.No./Ref.No", "Cheq No ue", "CHQ/REFNO.","CHEQUE/REFERENCE#", "ChequeNo.", "Chq.No", "Cheque No","Chq./ref.no", "Ref No", "Cheque number", "Ref no./cheque no.","Chq.no", "Chq No", "CHQ.NO.", "CHQ NO", "Cheque No.","Cheque Number", "Chq./Ref.No", "Chq.No."," Ref No./Cheque No.", "CHQ.NO", "Cnq.No.","Chq/Ref number", "Chq/Ref No"},
-		"Narration": {"Transaction Reference","Transaction","TransactionReference","RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks","TransactionParticulars"},
-		"Credits": {"CrAmount","DEPOSITAMT","Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
-		"Debits": {"W ithdrawals","Dr Amount","Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
-		"Balance": {"Amount","BALANCEAMT","TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "Batance","BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance","C losingBalance INR"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance","Total Amount Dr/Cr"}
-	}
+    """
+    Normalize column headers to standard names
+    """
+    headers = {
+        "Value Date": {"Value Date", "VAL DATE", "Val Date", "VALUE DT","ValueDate", "VALDATE"},
+        "XN Date": {"Post.Dt","Date(ValueDate)","Date","Txn Posted Date","TransactionDate &Time","Tran Date","GL. Date","Date Day/Night","TransactionDate","TxnDate& Time","DAT VALUE", "Date(Value Date","Date& Time", "Post Date", "PostDate", "TRANSACTION DATE", "Tran Date", "TranDate","XN Date", "Transaction date", "Txn Date", "Post date","ate", "DATE", "Transaction Date", "TRAN DATE", "TRANDATE","Transactio n Date"},
+        "Cheque No": {"Cheque/Refer enceNo","Cheque.No./Ref.No", "Cheq No ue", "CHQ/REFNO.","CHEQUE/REFERENCE#", "ChequeNo.", "Chq.No", "Cheque No","Chq./ref.no", "Ref No", "Cheque number", "Ref no./cheque no.","Chq.no", "Chq No", "CHQ.NO.", "CHQ NO", "Cheque No.","Cheque Number", "Chq./Ref.No", "Chq.No."," Ref No./Cheque No.", "CHQ.NO", "Cnq.No.","Chq/Ref number", "Chq/Ref No"},
+        "Narration": {"Transaction Reference","Transaction","TransactionReference","RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks","TransactionParticulars"},
+        "Credits": {"CrAmount","DEPOSITAMT","Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
+        "Debits": {"W ithdrawals","Dr Amount","Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
+        "Balance": {"Amount","BALANCEAMT","TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "Batance","BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance","C losingBalance INR"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance","Total Amount Dr/Cr"}
+    }
 
-	HEADER_REGEX = {
-		"XN Date": [
-			r'\btxn\s*d-ate\b',
-			r'\bdate\b',
-			r'\btran\s*date\b',
-			r'\bpost\s*date\b',r'\bg\s*\.?\s*l\s*\.?\s*d\s*a\s*t\s*e\b',
-			r'\btransaction\s*date\b',
-			r'\bdate\s*value\s*date\b',r'\b(?:txn|tran|transaction)\s*d\s*a\s*t\s*e\s*(?:&|and)\s*t\s*i\s*m\s*e\b',
-			r'\bdate\s*(?:&|and)\s*time\b',r'\bdat\s*value\b',r'\btransaction\s*date\b',r'\btxn\s*date\s*(?:&|and)\s*time\b',r'\bdate\s*day\s*/\s*night\b',
-
-
-
-		],
-		"Value Date": [
-			r'\bvalue\s*date\b',
-			r'\bval\s*date\b'
-		],
-		"Cheque No": [r'\bcheq\b', r'\bchq\b', r'\bref\b'],
-		"Narration": [r'\bnarr\b',r'\bpayment\s*n\s*a\s*r\s*r\s*a\s*t\s*i\s*o\s*n\b',r'\btransaction\s*remarks\b',r'\btransaction\s*description\b', r'\bparticulars?\b', r'\bremarks?\b', r'\bdetails?\b', r'\bdescription\b'],
-		"Credits": [r'\bcredit\b', r'\bcr\b', r'\bdeposits?\b',r'\bdeposit\b',r'\bcredit\s*amount\b'],
-		"Debits": [r'\bdebit\b', r'\bwithdrawals?\b',r'\bdr\b', r'\bwithdraw\b',r'\bdebit\s*amount\b',r'\bwithdrawal\s*amt\s*\(?inr\)?\b',r'\bdeposit\s*amt.*inr\b'],
-		"Balance": [r'\bbalance\b',r'\btotal\s*a\s*m\s*o\s*u\s*n\s*t\b',r'\bbalance\s*\(inr\)\b' r'\bclosing\b', r'\btransaction\s*details\s*comment.*payment\s*method\b',
-					r'\bavailable\b',r'\bbook\s*bal(?:ance)?\b',r'\brunning\s*bal(?:ance)?\b']
-	}
-	standard_headers = set(headers.keys())
-
-	existing_standard_cols = set()
-	for col in df.columns:
-		col_stripped = col.strip()
-		if col_stripped in standard_headers:
-			# Check if column has any non‑null, non‑empty string values
-			non_empty = df[col].dropna()
-			non_empty = non_empty[non_empty.astype(str).str.strip() != '']
-			if not non_empty.empty:
-				existing_standard_cols.add(col_stripped)
-
-	# Build fuzzy support
-	all_possible_headers = []
-	reverse_mapping = {}
-
-	for std, variants in headers.items():
-
-		if std in existing_standard_cols:
-			continue
-
-		for v in variants:
-			v_clean = re.sub(r'[^a-z0-9 ]', ' ', v.lower())
-			v_clean = re.sub(r'\s+', ' ', v_clean).strip()
-
-			all_possible_headers.append(v_clean)
-			reverse_mapping[v_clean] = std
-
-	normalized_cols = []
-
-	for col in df.columns:
-
-		original_col = str(col).strip()
-
-		if original_col in headers.keys():
-			normalized_cols.append(original_col)
-			continue
-
-		clean_col = original_col.lower()
-		clean_col = re.sub(r'[^a-z0-9 ]', ' ', clean_col)
-		clean_col = re.sub(r'\s+', ' ', clean_col).strip()
-
-		mapped = None
-
-				#  Exact dictionary match
-		for std, variants in headers.items():
-
-			if std in existing_standard_cols:
-				continue
-
-			for v in variants:
-				v_clean = re.sub(r'[^a-z0-9 ]', ' ', v.lower())
-				v_clean = re.sub(r'\s+', ' ', v_clean).strip()
-
-				if clean_col == v_clean:
-					mapped = std
-					break
-
-			if mapped:
-				break
+    HEADER_REGEX = {
+        "XN Date": [
+            r'\btxn\s*d-ate\b',
+            r'\bdate\b',
+            r'\btran\s*date\b',
+            r'\bpost\s*date\b',r'\bg\s*\.?\s*l\s*\.?\s*d\s*a\s*t\s*e\b',
+            r'\btransaction\s*date\b',
+            r'\bdate\s*value\s*date\b',r'\b(?:txn|tran|transaction)\s*d\s*a\s*t\s*e\s*(?:&|and)\s*t\s*i\s*m\s*e\b',
+            r'\bdate\s*(?:&|and)\s*time\b',r'\bdat\s*value\b',r'\btransaction\s*date\b',r'\btxn\s*date\s*(?:&|and)\s*time\b',r'\bdate\s*day\s*/\s*night\b',
 
 
-		#  Regex match (ONLY if dictionary failed)
-		if not mapped:
-			for std, patterns in HEADER_REGEX.items():
 
-				if std in existing_standard_cols:
-					continue
+        ],
+        "Value Date": [
+            r'\bvalue\s*date\b',
+            r'\bval\s*date\b'
+        ],
+        "Cheque No": [r'\bcheq\b', r'\bchq\b', r'\bref\b'],
+        "Narration": [r'\bnarr\b',r'\bpayment\s*n\s*a\s*r\s*r\s*a\s*t\s*i\s*o\s*n\b',r'\btransaction\s*remarks\b',r'\btransaction\s*description\b', r'\bparticulars?\b', r'\bremarks?\b', r'\bdetails?\b', r'\bdescription\b'],
+        "Credits": [r'\bcredit\b', r'\bcr\b', r'\bdeposits?\b',r'\bdeposit\b',r'\bcredit\s*amount\b'],
+        "Debits": [r'\bdebit\b', r'\bwithdrawals?\b',r'\bdr\b', r'\bwithdraw\b',r'\bdebit\s*amount\b',r'\bwithdrawal\s*amt\s*\(?inr\)?\b',r'\bdeposit\s*amt.*inr\b'],
+        "Balance": [r'\bbalance\b',r'\btotal\s*a\s*m\s*o\s*u\s*n\s*t\b',r'\bbalance\s*\(inr\)\b' r'\bclosing\b', r'\btransaction\s*details\s*comment.*payment\s*method\b',
+                    r'\bavailable\b',r'\bbook\s*bal(?:ance)?\b',r'\brunning\s*bal(?:ance)?\b']
+    }
+    standard_headers = set(headers.keys())
 
-				for pat in patterns:
-					if re.search(pat, clean_col):
-						mapped = std
-						break
+    existing_standard_cols = set()
+    for col in df.columns:
+        col_stripped = col.strip()
+        if col_stripped in standard_headers:
+            # Check if column has any non‑null, non‑empty string values
+            non_empty = df[col].dropna()
+            non_empty = non_empty[non_empty.astype(str).str.strip() != '']
+            if not non_empty.empty:
+                existing_standard_cols.add(col_stripped)
 
-				if mapped:
-					break
+    # Build fuzzy support
+    all_possible_headers = []
+    reverse_mapping = {}
+
+    for std, variants in headers.items():
+
+        if std in existing_standard_cols:
+            continue
+
+        for v in variants:
+            v_clean = re.sub(r'[^a-z0-9 ]', ' ', v.lower())
+            v_clean = re.sub(r'\s+', ' ', v_clean).strip()
+
+            all_possible_headers.append(v_clean)
+            reverse_mapping[v_clean] = std
+
+    normalized_cols = []
+
+    for col in df.columns:
+
+        original_col = str(col).strip()
+
+        if original_col in headers.keys():
+            normalized_cols.append(original_col)
+            continue
+
+        clean_col = original_col.lower()
+        clean_col = re.sub(r'[^a-z0-9 ]', ' ', clean_col)
+        clean_col = re.sub(r'\s+', ' ', clean_col).strip()
+
+        mapped = None
+
+                #  Exact dictionary match
+        for std, variants in headers.items():
+
+            if std in existing_standard_cols:
+                continue
+
+            for v in variants:
+                v_clean = re.sub(r'[^a-z0-9 ]', ' ', v.lower())
+                v_clean = re.sub(r'\s+', ' ', v_clean).strip()
+
+                if clean_col == v_clean:
+                    mapped = std
+                    break
+
+            if mapped:
+                break
 
 
-		#  Fuzzy match (ONLY if regex failed)
-		if not mapped and all_possible_headers:
+        #  Regex match (ONLY if dictionary failed)
+        if not mapped:
+            for std, patterns in HEADER_REGEX.items():
 
-			match = process.extractOne(
-				clean_col,
-				all_possible_headers,
-				scorer=fuzz.token_sort_ratio
-			)
+                if std in existing_standard_cols:
+                    continue
 
-			if match:
-				best_match, score = match
+                for pat in patterns:
+                    if re.search(pat, clean_col):
+                        mapped = std
+                        break
 
-				if score >= 90:
-					mapped = reverse_mapping[best_match]
+                if mapped:
+                    break
 
 
-		#  Fallback
-		if not mapped:
-			mapped = original_col
+        #  Fuzzy match (ONLY if regex failed)
+        if not mapped and all_possible_headers:
 
-		normalized_cols.append(mapped)
+            match = process.extractOne(
+                clean_col,
+                all_possible_headers,
+                scorer=fuzz.token_sort_ratio
+            )
 
-	df.columns = normalized_cols
-	df = df.loc[:, ~df.columns.duplicated()]
+            if match:
+                best_match, score = match
 
-	
+                if score >= 90:
+                    mapped = reverse_mapping[best_match]
 
-	if "Balance" in df.columns:
-		df["Balance"] = df["Balance"].apply(parse_balance)
+
+        #  Fallback
+        if not mapped:
+            mapped = original_col
+
+        normalized_cols.append(mapped)
+
+    df.columns = normalized_cols
+    df = df.loc[:, ~df.columns.duplicated()]
+
+    
+
+    if "Balance" in df.columns:
+        df["Balance"] = df["Balance"].apply(parse_balance)
   
 
-	if "Cheque No" in df.columns:
-		df["Cheque No"] = (
-			df["Cheque No"]
-			.replace(r'\.0$', '', regex=True)
-			.replace(['0', 0], np.nan)
-			.fillna('')
-			.astype(str)
-		)
-	else:
-		df["Cheque No"] = ""
-	if 'Value Date' in df.columns and 'XN Date' not in df.columns:
-		df['XN Date'] = df['Value Date']	
-		
-	#  print("Columns after normalization:", df.columns.tolist())
-	return df
+    if "Cheque No" in df.columns:
+        df["Cheque No"] = (
+            df["Cheque No"]
+            .replace(r'\.0$', '', regex=True)
+            .replace(['0', 0], np.nan)
+            .fillna('')
+            .astype(str)
+        )
+    else:
+        df["Cheque No"] = ""
+    if 'Value Date' in df.columns and 'XN Date' not in df.columns:
+        df['XN Date'] = df['Value Date']	
+        
+    #  print("Columns after normalization:", df.columns.tolist())
+    return df
 
 
 def create_ocr_corrected_columns(df):
-	"""
-	Create corrected columns for Debit, Credit and Balance
-	with OCR error handling and decimal correction.
-	"""
-	print(">>> Creating OCR corrected columns...")
-	
-	# Create new columns with corrected values
-	# Use the raw string values that were saved before extraction
-	# If raw columns exist, use them. Otherwise, use current columns (as strings)
-	
-	if 'Debits_Raw' in df.columns:
-		df['Debits_Original'] = df['Debits_Raw']
-		df['Debits_Corrected'] = df['Debits_Raw'].apply(extract_amount_new)
-	elif 'Debits' in df.columns:
-		df['Debits_Original'] = df['Debits'].astype(str)
-		df['Debits_Corrected'] = df['Debits'].astype(str).apply(extract_amount_new)
-	else:
-		df['Debits_Original'] = ""
-		df['Debits_Corrected'] = ""
-	
-	if 'Credits_Raw' in df.columns:
-		df['Credits_Original'] = df['Credits_Raw']
-		df['Credits_Corrected'] = df['Credits_Raw'].apply(extract_amount_new)
-	elif 'Credits' in df.columns:
-		df['Credits_Original'] = df['Credits'].astype(str)
-		df['Credits_Corrected'] = df['Credits'].astype(str).apply(extract_amount_new)
-	else:
-		df['Credits_Original'] = ""
-		df['Credits_Corrected'] = ""
-	
-	if 'Balance_Raw' in df.columns:
-		df['Balance_Original'] = df['Balance_Raw']
-		df['Balance_Corrected'] = df['Balance_Raw'].apply(extract_amount_new)
-	elif 'Balance' in df.columns:
-		df['Balance_Original'] = df['Balance'].astype(str)
-		df['Balance_Corrected'] = df['Balance'].astype(str).apply(extract_amount_new)
-	else:
-		df['Balance_Original'] = ""
-		df['Balance_Corrected'] = ""
-	
-	# Ensure numeric types
-	for col in ['Debits_Corrected', 'Credits_Corrected', 'Balance_Corrected']:
-		if col in df.columns:
-			df[col] = pd.to_numeric(df[col], errors='coerce')
-	
-	print("<<< OCR corrected columns created")
-	return df
+    """
+    Create corrected columns for Debit, Credit and Balance
+    with OCR error handling and decimal correction.
+    """
+    print(">>> Creating OCR corrected columns...")
+    
+    # Create new columns with corrected values
+    # Use the raw string values that were saved before extraction
+    # If raw columns exist, use them. Otherwise, use current columns (as strings)
+    
+    if 'Debits_Raw' in df.columns:
+        df['Debits_Original'] = df['Debits_Raw']
+        df['Debits_Corrected'] = df['Debits_Raw'].apply(extract_amount_new)
+    elif 'Debits' in df.columns:
+        df['Debits_Original'] = df['Debits'].astype(str)
+        df['Debits_Corrected'] = df['Debits'].astype(str).apply(extract_amount_new)
+    else:
+        df['Debits_Original'] = ""
+        df['Debits_Corrected'] = ""
+    
+    if 'Credits_Raw' in df.columns:
+        df['Credits_Original'] = df['Credits_Raw']
+        df['Credits_Corrected'] = df['Credits_Raw'].apply(extract_amount_new)
+    elif 'Credits' in df.columns:
+        df['Credits_Original'] = df['Credits'].astype(str)
+        df['Credits_Corrected'] = df['Credits'].astype(str).apply(extract_amount_new)
+    else:
+        df['Credits_Original'] = ""
+        df['Credits_Corrected'] = ""
+    
+    if 'Balance_Raw' in df.columns:
+        df['Balance_Original'] = df['Balance_Raw']
+        df['Balance_Corrected'] = df['Balance_Raw'].apply(extract_amount_new)
+    elif 'Balance' in df.columns:
+        df['Balance_Original'] = df['Balance'].astype(str)
+        df['Balance_Corrected'] = df['Balance'].astype(str).apply(extract_amount_new)
+    else:
+        df['Balance_Original'] = ""
+        df['Balance_Corrected'] = ""
+    
+    # Ensure numeric types
+    for col in ['Debits_Corrected', 'Credits_Corrected', 'Balance_Corrected']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    print("<<< OCR corrected columns created")
+    return df
 
 
 def calculate_difference_and_verify(df):
-	"""
-	Calculate difference using formula:
-	BALANCE(i-1) + CREDIT(i) + DEBIT(i) - BALANCE(i)
-	and check if difference is 0 for all rows.
-	
-	If differences are only in decimals (between -0.99 and 0.99),
-	adjust ALL balances to make difference 0 for ALL rows.
-	"""
-	print(">>> Calculating differences for OCR verification...")
-	
-	# Create a copy and reset index to ensure continuous integer indices
-	df_diff = df.copy().reset_index(drop=True)
-	
-	# Debug: Print DataFrame info
-	# print(f"DataFrame shape after reset: {df_diff.shape}")
-	# print(f"Available columns: {list(df_diff.columns)}")
-	
-	# Initialize difference column
-	df_diff['Difference'] = 0.0
-	df_diff['Balance_Adjusted'] = df_diff['Balance_Corrected'].copy() if 'Balance_Corrected' in df_diff.columns else df_diff['Balance'].copy()
-	
-	# Check if we have the corrected columns
-	has_corrected_debits = 'Debits_Corrected' in df_diff.columns
-	has_corrected_credits = 'Credits_Corrected' in df_diff.columns
-	has_corrected_balance = 'Balance_Corrected' in df_diff.columns
-	
-	# print(f"Has corrected columns - Debits: {has_corrected_debits}, Credits: {has_corrected_credits}, Balance: {has_corrected_balance}")
-	
-	# Use corrected columns if available, otherwise use original
-	debit_col = 'Debits_Corrected' if has_corrected_debits else 'Debits'
-	credit_col = 'Credits_Corrected' if has_corrected_credits else 'Credits'
-	balance_col = 'Balance_Adjusted'  # Use adjusted balance column for calculation
-	
-	# Check if columns exist, if not try to find alternatives
-	if debit_col not in df_diff.columns:
-		# print(f"WARNING: {debit_col} not in DataFrame columns!")
-		# Try to find alternative debit column
-		for col in df_diff.columns:
-			if 'debit' in col.lower():
-				debit_col = col
-				# print(f"Found alternative debit column: {debit_col}")
-				break
-	
-	if credit_col not in df_diff.columns:
-		# print(f"WARNING: {credit_col} not in DataFrame columns!")
-		# Try to find alternative credit column
-		for col in df_diff.columns:
-			if 'credit' in col.lower():
-				credit_col = col
-				# print(f"Found alternative credit column: {credit_col}")
-				break
-	
-	if balance_col not in df_diff.columns:
-		# print(f"WARNING: {balance_col} not in DataFrame columns!")
-		# Try to find alternative balance column
-		for col in df_diff.columns:
-			if 'balance' in col.lower():
-				balance_col = col
-				# print(f"Found alternative balance column: {balance_col}")
-				break
-	
-	# print(f"Using columns - Debit: {debit_col}, Credit: {credit_col}, Balance: {balance_col}")
-	
-	# Check if required columns exist
-	required_cols_missing = []
-	if debit_col not in df_diff.columns:
-		required_cols_missing.append(debit_col)
-	if credit_col not in df_diff.columns:
-		required_cols_missing.append(credit_col)
-	if balance_col not in df_diff.columns:
-		required_cols_missing.append(balance_col)
-	
-	if required_cols_missing:
-		# print(f"ERROR: Missing required columns: {required_cols_missing}")
-		# print("Cannot calculate differences. Returning original DataFrame.")
-		return df_diff, False, False
-	
-	# Helper function to round to 2 decimal places
-	def round_to_2(val):
-		if pd.isna(val) or str(val).strip().lower() in ["", "nan", "none"]:
-			return 0.0
-		try: 
-			return round(float(val), 2)
-		except:
-			return 0.0
-	
-	# Round all numeric columns to 2 decimal places for consistent calculations
-	for col in [debit_col, credit_col, balance_col]:
-		if col in df_diff.columns:
-			df_diff[col] = df_diff[col].apply(round_to_2)
-	
-	# Calculate difference for each row starting from row 1
-	# print(f"DataFrame has {len(df_diff)} rows, will process rows 1 to {len(df_diff)-1}")
-	
-	# CRITICAL FIX: Use iloc instead of at to avoid index issues
-	for i in range(1, len(df_diff)):
-		try:
-			# Get previous balance (rounded) - using iloc for position-based access
-			prev_balance = 0
-			if i > 0 and balance_col in df_diff.columns:
-				prev_balance = round_to_2(df_diff.iloc[i-1][balance_col])
-			
-			# Get current values (rounded) - using iloc for position-based access
-			curr_debit = 0
-			if debit_col in df_diff.columns:
-				curr_debit = round_to_2(df_diff.iloc[i][debit_col])
-			
-			curr_credit = 0
-			if credit_col in df_diff.columns:
-				curr_credit = round_to_2(df_diff.iloc[i][credit_col])
-			
-			curr_balance = 0
-			if balance_col in df_diff.columns:
-				curr_balance = round_to_2(df_diff.iloc[i][balance_col])
-			
-			# Calculate difference using the formula: Balance(i-1) + Credit(i) + Debit(i) - Balance(i)
-			# Round to 2 decimal places to avoid floating-point errors
-			difference = round(prev_balance + curr_credit + curr_debit - curr_balance, 2)
-			
-			# Use iloc to set the value safely
-			df_diff.iloc[i, df_diff.columns.get_loc('Difference')] = difference
-			
-		except IndexError as e:
-			# print(f"IndexError at position {i}: {e}")
-			# print(f"DataFrame has {len(df_diff)} rows, trying to access row {i}")
-			break
-		except KeyError as e:
-			# print(f"KeyError at position {i}: {e}")
-			# print(f"Trying to access column that doesn't exist")
-			break
-		except Exception as e:
-			# print(f"Unexpected error at position {i}: {e}")
-			break
-	
-	# REQUIREMENT 2: Check if all differences are in the acceptable decimal range (-0.99 to 0.99)
-	differences = df_diff['Difference']
-	
-	# Check conditions for adjustment:
-	# 1. All differences must be between -0.99 and 0.99 (exclusive of -1 and 1)
-	all_differences_in_range = ((differences > -1.0) & (differences < 1.0)).all()
-	
-	if all_differences_in_range and len(df_diff) > 1:
-		# print("✓ All differences are within -0.99 to 0.99. Adjusting balances...")
-		
-		# FIXED: We need to adjust ALL balances consistently
-		# Start with first balance as reference
-		adjusted_balances = []
-		
-		# Keep the first balance as is (rounded to 2 decimal places)
-		if balance_col in df_diff.columns and not pd.isna(df_diff.iloc[0][balance_col]):
-			adjusted_balances.append(round_to_2(df_diff.iloc[0][balance_col]))
-		else:
-			adjusted_balances.append(0.0)
-		
-		# Calculate adjusted balances for all subsequent rows
-		for i in range(1, len(df_diff)):
-			# Get the adjusted previous balance
-			prev_adjusted_balance = adjusted_balances[-1]
-			
-			# Get current debit and credit (rounded)
-			curr_debit = 0
-			if debit_col in df_diff.columns:
-				curr_debit = round_to_2(df_diff.iloc[i][debit_col])
-			
-			curr_credit = 0
-			if credit_col in df_diff.columns:
-				curr_credit = round_to_2(df_diff.iloc[i][credit_col])
-			
-			# Calculate what the current balance SHOULD be based on previous adjusted balance
-			# Formula: Current Balance = Previous Balance + Credit + Debit
-			# Round to 2 decimal places to avoid floating-point errors
-			should_be_balance = round(prev_adjusted_balance + curr_credit + curr_debit, 2)
-			
-			# Store this as the adjusted balance
-			adjusted_balances.append(should_be_balance)
-			
-			# Update the Balance_Adjusted column using iloc
-			df_diff.iloc[i, df_diff.columns.get_loc('Balance_Adjusted')] = should_be_balance
-		
-		# Update the first row's Balance_Adjusted if it exists
-		if len(adjusted_balances) > 0 and balance_col in df_diff.columns:
-			df_diff.iloc[0, df_diff.columns.get_loc('Balance_Adjusted')] = adjusted_balances[0]
-		
-		# Recalculate differences after adjustment (with rounding)
-		for i in range(1, len(df_diff)):
-			# Get previous adjusted balance (rounded)
-			prev_balance = 0
-			if i > 0 and 'Balance_Adjusted' in df_diff.columns:
-				prev_balance = round_to_2(df_diff.iloc[i-1]['Balance_Adjusted'])
-			
-			# Get current values (rounded)
-			curr_debit = 0
-			if debit_col in df_diff.columns:
-				curr_debit = round_to_2(df_diff.iloc[i][debit_col])
-			
-			curr_credit = 0
-			if credit_col in df_diff.columns:
-				curr_credit = round_to_2(df_diff.iloc[i][credit_col])
-			
-			curr_balance = 0
-			if 'Balance_Adjusted' in df_diff.columns:
-				curr_balance = round_to_2(df_diff.iloc[i]['Balance_Adjusted'])
-			
-			# Recalculate difference with rounding
-			difference = round(prev_balance + curr_credit + curr_debit - curr_balance, 2)
-			df_diff.iloc[i, df_diff.columns.get_loc('Difference')] = difference
-		
-		adjusted = True
-		# print("✓ All balances have been adjusted to synchronize with transactions.")
-	
-	else:
-		adjusted = False
-		if len(df_diff) > 1:
-			# print("✗ Differences are not all within the decimal range. No adjustment made.")
-			pass
-			# Show the differences that are out of range
-			out_of_range = df_diff[~((df_diff['Difference'] > -1.0) & (df_diff['Difference'] < 1.0))]
-			if not out_of_range.empty:
-				# print(f"  Rows with differences out of range: {list(out_of_range.index)}")
-				pass
-				for idx in out_of_range.index[:3]:
-					# print(f"    Row {idx}: Difference = {df_diff.at[idx, 'Difference']}")
-					pass
-		else:
-			# print("✗ Not enough rows for adjustment.")
-			pass
-	
-	# Check if all differences are close to 0 (within tolerance)
-	tolerance = 0.001  # Allow very small floating point errors due to rounding
-	
-	# Calculate statistics
-	differences_abs = df_diff['Difference'].abs()
-	non_zero_diffs = df_diff[differences_abs > tolerance]
-	
-	if len(non_zero_diffs) == 0:
-		# print("✓ All differences are 0 - OCR values appear correct!")
-		all_correct = True
-	else:
-		# print(f"✗ Differences found - {len(non_zero_diffs)} rows have non-zero differences")
-		# print(f"  Max difference: {differences_abs.max()}")
-		# print(f"  Rows with differences: {list(non_zero_diffs.index)}")
-		pass
-		# Show some examples of problematic rows
-		for idx in non_zero_diffs.index[:5]:  # Show first 5 problematic rows
-			# print(f"\n  Row {idx}:")
-			# print(f"    Prev Balance: {round_to_2(df_diff.at[idx-1, 'Balance_Adjusted']) if idx > 0 and 'Balance_Adjusted' in df_diff.columns else 'N/A'}")
-			# print(f"    Debit: {round_to_2(df_diff.at[idx, debit_col])}")
-			# print(f"    Credit: {round_to_2(df_diff.at[idx, credit_col])}")
-			# print(f"    Current Balance: {round_to_2(df_diff.at[idx, 'Balance_Adjusted']) if 'Balance_Adjusted' in df_diff.columns else 'N/A'}")
-			# print(f"    Difference: {df_diff.at[idx, 'Difference']}")
-			
-			# Also show original values for debugging
-			if 'Debits_Original' in df_diff.columns:
-				# print(f"    Debit Original: {df_diff.at[idx, 'Debits_Original']}")
-				pass
-			if 'Balance_Original' in df_diff.columns:
-				# print(f"    Balance Original: {df_diff.at[idx, 'Balance_Original']}")
-				pass
-		
-		all_correct = False
-	
-	# print("<<< Difference calculation completed")
-	return df_diff, all_correct, adjusted
+    """
+    Calculate difference using formula:
+    BALANCE(i-1) + CREDIT(i) + DEBIT(i) - BALANCE(i)
+    and check if difference is 0 for all rows.
+    
+    If differences are only in decimals (between -0.99 and 0.99),
+    adjust ALL balances to make difference 0 for ALL rows.
+    """
+    print(">>> Calculating differences for OCR verification...")
+    
+    # Create a copy and reset index to ensure continuous integer indices
+    df_diff = df.copy().reset_index(drop=True)
+    
+    # Debug: Print DataFrame info
+    # print(f"DataFrame shape after reset: {df_diff.shape}")
+    # print(f"Available columns: {list(df_diff.columns)}")
+    
+    # Initialize difference column
+    df_diff['Difference'] = 0.0
+    df_diff['Balance_Adjusted'] = df_diff['Balance_Corrected'].copy() if 'Balance_Corrected' in df_diff.columns else df_diff['Balance'].copy()
+    
+    # Check if we have the corrected columns
+    has_corrected_debits = 'Debits_Corrected' in df_diff.columns
+    has_corrected_credits = 'Credits_Corrected' in df_diff.columns
+    has_corrected_balance = 'Balance_Corrected' in df_diff.columns
+    
+    # print(f"Has corrected columns - Debits: {has_corrected_debits}, Credits: {has_corrected_credits}, Balance: {has_corrected_balance}")
+    
+    # Use corrected columns if available, otherwise use original
+    debit_col = 'Debits_Corrected' if has_corrected_debits else 'Debits'
+    credit_col = 'Credits_Corrected' if has_corrected_credits else 'Credits'
+    balance_col = 'Balance_Adjusted'  # Use adjusted balance column for calculation
+    
+    # Check if columns exist, if not try to find alternatives
+    if debit_col not in df_diff.columns:
+        # print(f"WARNING: {debit_col} not in DataFrame columns!")
+        # Try to find alternative debit column
+        for col in df_diff.columns:
+            if 'debit' in col.lower():
+                debit_col = col
+                # print(f"Found alternative debit column: {debit_col}")
+                break
+    
+    if credit_col not in df_diff.columns:
+        # print(f"WARNING: {credit_col} not in DataFrame columns!")
+        # Try to find alternative credit column
+        for col in df_diff.columns:
+            if 'credit' in col.lower():
+                credit_col = col
+                # print(f"Found alternative credit column: {credit_col}")
+                break
+    
+    if balance_col not in df_diff.columns:
+        # print(f"WARNING: {balance_col} not in DataFrame columns!")
+        # Try to find alternative balance column
+        for col in df_diff.columns:
+            if 'balance' in col.lower():
+                balance_col = col
+                # print(f"Found alternative balance column: {balance_col}")
+                break
+    
+    # print(f"Using columns - Debit: {debit_col}, Credit: {credit_col}, Balance: {balance_col}")
+    
+    # Check if required columns exist
+    required_cols_missing = []
+    if debit_col not in df_diff.columns:
+        required_cols_missing.append(debit_col)
+    if credit_col not in df_diff.columns:
+        required_cols_missing.append(credit_col)
+    if balance_col not in df_diff.columns:
+        required_cols_missing.append(balance_col)
+    
+    if required_cols_missing:
+        # print(f"ERROR: Missing required columns: {required_cols_missing}")
+        # print("Cannot calculate differences. Returning original DataFrame.")
+        return df_diff, False, False
+    
+    # Helper function to round to 2 decimal places
+    def round_to_2(val):
+        if pd.isna(val) or str(val).strip().lower() in ["", "nan", "none"]:
+            return 0.0
+        try: 
+            return round(float(val), 2)
+        except:
+            return 0.0
+    
+    # Round all numeric columns to 2 decimal places for consistent calculations
+    for col in [debit_col, credit_col, balance_col]:
+        if col in df_diff.columns:
+            df_diff[col] = df_diff[col].apply(round_to_2)
+    
+    # Calculate difference for each row starting from row 1
+    # print(f"DataFrame has {len(df_diff)} rows, will process rows 1 to {len(df_diff)-1}")
+    
+    # CRITICAL FIX: Use iloc instead of at to avoid index issues
+    for i in range(1, len(df_diff)):
+        try:
+            # Get previous balance (rounded) - using iloc for position-based access
+            prev_balance = 0
+            if i > 0 and balance_col in df_diff.columns:
+                prev_balance = round_to_2(df_diff.iloc[i-1][balance_col])
+            
+            # Get current values (rounded) - using iloc for position-based access
+            curr_debit = 0
+            if debit_col in df_diff.columns:
+                curr_debit = round_to_2(df_diff.iloc[i][debit_col])
+            
+            curr_credit = 0
+            if credit_col in df_diff.columns:
+                curr_credit = round_to_2(df_diff.iloc[i][credit_col])
+            
+            curr_balance = 0
+            if balance_col in df_diff.columns:
+                curr_balance = round_to_2(df_diff.iloc[i][balance_col])
+            
+            # Calculate difference using the formula: Balance(i-1) + Credit(i) + Debit(i) - Balance(i)
+            # Round to 2 decimal places to avoid floating-point errors
+            difference = round(prev_balance + curr_credit + curr_debit - curr_balance, 2)
+            
+            # Use iloc to set the value safely
+            df_diff.iloc[i, df_diff.columns.get_loc('Difference')] = difference
+            
+        except IndexError as e:
+            # print(f"IndexError at position {i}: {e}")
+            # print(f"DataFrame has {len(df_diff)} rows, trying to access row {i}")
+            break
+        except KeyError as e:
+            # print(f"KeyError at position {i}: {e}")
+            # print(f"Trying to access column that doesn't exist")
+            break
+        except Exception as e:
+            # print(f"Unexpected error at position {i}: {e}")
+            break
+    
+    # REQUIREMENT 2: Check if all differences are in the acceptable decimal range (-0.99 to 0.99)
+    differences = df_diff['Difference']
+    
+    # Check conditions for adjustment:
+    # 1. All differences must be between -0.99 and 0.99 (exclusive of -1 and 1)
+    all_differences_in_range = ((differences > -1.0) & (differences < 1.0)).all()
+    
+    if all_differences_in_range and len(df_diff) > 1:
+        # print("✓ All differences are within -0.99 to 0.99. Adjusting balances...")
+        
+        # FIXED: We need to adjust ALL balances consistently
+        # Start with first balance as reference
+        adjusted_balances = []
+        
+        # Keep the first balance as is (rounded to 2 decimal places)
+        if balance_col in df_diff.columns and not pd.isna(df_diff.iloc[0][balance_col]):
+            adjusted_balances.append(round_to_2(df_diff.iloc[0][balance_col]))
+        else:
+            adjusted_balances.append(0.0)
+        
+        # Calculate adjusted balances for all subsequent rows
+        for i in range(1, len(df_diff)):
+            # Get the adjusted previous balance
+            prev_adjusted_balance = adjusted_balances[-1]
+            
+            # Get current debit and credit (rounded)
+            curr_debit = 0
+            if debit_col in df_diff.columns:
+                curr_debit = round_to_2(df_diff.iloc[i][debit_col])
+            
+            curr_credit = 0
+            if credit_col in df_diff.columns:
+                curr_credit = round_to_2(df_diff.iloc[i][credit_col])
+            
+            # Calculate what the current balance SHOULD be based on previous adjusted balance
+            # Formula: Current Balance = Previous Balance + Credit + Debit
+            # Round to 2 decimal places to avoid floating-point errors
+            should_be_balance = round(prev_adjusted_balance + curr_credit + curr_debit, 2)
+            
+            # Store this as the adjusted balance
+            adjusted_balances.append(should_be_balance)
+            
+            # Update the Balance_Adjusted column using iloc
+            df_diff.iloc[i, df_diff.columns.get_loc('Balance_Adjusted')] = should_be_balance
+        
+        # Update the first row's Balance_Adjusted if it exists
+        if len(adjusted_balances) > 0 and balance_col in df_diff.columns:
+            df_diff.iloc[0, df_diff.columns.get_loc('Balance_Adjusted')] = adjusted_balances[0]
+        
+        # Recalculate differences after adjustment (with rounding)
+        for i in range(1, len(df_diff)):
+            # Get previous adjusted balance (rounded)
+            prev_balance = 0
+            if i > 0 and 'Balance_Adjusted' in df_diff.columns:
+                prev_balance = round_to_2(df_diff.iloc[i-1]['Balance_Adjusted'])
+            
+            # Get current values (rounded)
+            curr_debit = 0
+            if debit_col in df_diff.columns:
+                curr_debit = round_to_2(df_diff.iloc[i][debit_col])
+            
+            curr_credit = 0
+            if credit_col in df_diff.columns:
+                curr_credit = round_to_2(df_diff.iloc[i][credit_col])
+            
+            curr_balance = 0
+            if 'Balance_Adjusted' in df_diff.columns:
+                curr_balance = round_to_2(df_diff.iloc[i]['Balance_Adjusted'])
+            
+            # Recalculate difference with rounding
+            difference = round(prev_balance + curr_credit + curr_debit - curr_balance, 2)
+            df_diff.iloc[i, df_diff.columns.get_loc('Difference')] = difference
+        
+        adjusted = True
+        # print("✓ All balances have been adjusted to synchronize with transactions.")
+    
+    else:
+        adjusted = False
+        if len(df_diff) > 1:
+            # print("✗ Differences are not all within the decimal range. No adjustment made.")
+            pass
+            # Show the differences that are out of range
+            out_of_range = df_diff[~((df_diff['Difference'] > -1.0) & (df_diff['Difference'] < 1.0))]
+            if not out_of_range.empty:
+                # print(f"  Rows with differences out of range: {list(out_of_range.index)}")
+                pass
+                for idx in out_of_range.index[:3]:
+                    # print(f"    Row {idx}: Difference = {df_diff.at[idx, 'Difference']}")
+                    pass
+        else:
+            # print("✗ Not enough rows for adjustment.")
+            pass
+    
+    # Check if all differences are close to 0 (within tolerance)
+    tolerance = 0.001  # Allow very small floating point errors due to rounding
+    
+    # Calculate statistics
+    differences_abs = df_diff['Difference'].abs()
+    non_zero_diffs = df_diff[differences_abs > tolerance]
+    
+    if len(non_zero_diffs) == 0:
+        # print("✓ All differences are 0 - OCR values appear correct!")
+        all_correct = True
+    else:
+        # print(f"✗ Differences found - {len(non_zero_diffs)} rows have non-zero differences")
+        # print(f"  Max difference: {differences_abs.max()}")
+        # print(f"  Rows with differences: {list(non_zero_diffs.index)}")
+        pass
+        # Show some examples of problematic rows
+        for idx in non_zero_diffs.index[:5]:  # Show first 5 problematic rows
+            # print(f"\n  Row {idx}:")
+            # print(f"    Prev Balance: {round_to_2(df_diff.at[idx-1, 'Balance_Adjusted']) if idx > 0 and 'Balance_Adjusted' in df_diff.columns else 'N/A'}")
+            # print(f"    Debit: {round_to_2(df_diff.at[idx, debit_col])}")
+            # print(f"    Credit: {round_to_2(df_diff.at[idx, credit_col])}")
+            # print(f"    Current Balance: {round_to_2(df_diff.at[idx, 'Balance_Adjusted']) if 'Balance_Adjusted' in df_diff.columns else 'N/A'}")
+            # print(f"    Difference: {df_diff.at[idx, 'Difference']}")
+            
+            # Also show original values for debugging
+            if 'Debits_Original' in df_diff.columns:
+                # print(f"    Debit Original: {df_diff.at[idx, 'Debits_Original']}")
+                pass
+            if 'Balance_Original' in df_diff.columns:
+                # print(f"    Balance Original: {df_diff.at[idx, 'Balance_Original']}")
+                pass
+        
+        all_correct = False
+    
+    # print("<<< Difference calculation completed")
+    return df_diff, all_correct, adjusted
 
 def resolve_debit_credit_using_balance(df):
-	"""
-	If both Debits and Credits exist in the same row,
-	resolve correct one using balance movement.
-	"""
+    """
+    If both Debits and Credits exist in the same row,
+    resolve correct one using balance movement.
+    """
 
-	if not {"Debits", "Credits", "Balance"}.issubset(df.columns):
-		return df
+    if not {"Debits", "Credits", "Balance"}.issubset(df.columns):
+        return df
 
-	# Ensure numeric comparison
-	df["Debits"] = pd.to_numeric(df["Debits"], errors="coerce")
-	df["Credits"] = pd.to_numeric(df["Credits"], errors="coerce")
-	df["Balance"] = pd.to_numeric(df["Balance"], errors="coerce")
-	df["Debits"] = df["Debits"].replace(0.0, np.nan)
-	df["Credits"] = df["Credits"].replace(0.0, np.nan)
+    # Ensure numeric comparison
+    df["Debits"] = pd.to_numeric(df["Debits"], errors="coerce")
+    df["Credits"] = pd.to_numeric(df["Credits"], errors="coerce")
+    df["Balance"] = pd.to_numeric(df["Balance"], errors="coerce")
+    df["Debits"] = df["Debits"].replace(0.0, np.nan)
+    df["Credits"] = df["Credits"].replace(0.0, np.nan)
 
-	for i in range(1, len(df)):
-		prev_bal = df.at[i - 1, "Balance"]
-		curr_bal = df.at[i, "Balance"]
+    for i in range(1, len(df)):
+        prev_bal = df.at[i - 1, "Balance"]
+        curr_bal = df.at[i, "Balance"]
 
-		debit = df.at[i, "Debits"]
-		credit = df.at[i, "Credits"]
+        debit = df.at[i, "Debits"]
+        credit = df.at[i, "Credits"]
 
-		# Only when BOTH are present
-		if pd.notna(debit) and pd.notna(credit):
-			if pd.notna(prev_bal) and pd.notna(curr_bal):
+        # Only when BOTH are present
+        if pd.notna(debit) and pd.notna(credit):
+            if pd.notna(prev_bal) and pd.notna(curr_bal):
 
-				# Balance decreased → Debit
-				if curr_bal < prev_bal:
-					df.at[i, "Credits"] = np.nan
+                # Balance decreased → Debit
+                if curr_bal < prev_bal:
+                    df.at[i, "Credits"] = np.nan
 
-				# Balance increased → Credit
-				elif curr_bal > prev_bal:
-					df.at[i, "Debits"] = np.nan
-			
-		#  CASE 2: BOTH missing (NEW logic added)
-		elif pd.isna(debit) and pd.isna(credit):
+                # Balance increased → Credit
+                elif curr_bal > prev_bal:
+                    df.at[i, "Debits"] = np.nan
+            
+        #  CASE 2: BOTH missing (NEW logic added)
+        elif pd.isna(debit) and pd.isna(credit):
 
-			diff = curr_bal - prev_bal
+            diff = curr_bal - prev_bal
 
-			# Balance increased → Credit
-			if diff > 0:
-				df.at[i, "Credits"] = abs(diff)
+            # Balance increased → Credit
+            if diff > 0:
+                df.at[i, "Credits"] = abs(diff)
 
-			# Balance decreased → Debit
-			elif diff < 0:
-				df.at[i, "Debits"] = abs(diff)	
-	return df
+            # Balance decreased → Debit
+            elif diff < 0:
+                df.at[i, "Debits"] = abs(diff)	
+    return df
 
 def remove_trailing_summary_rows(df, max_check_rows=5):
     """
@@ -1452,594 +1497,598 @@ def remove_trailing_summary_rows(df, max_check_rows=5):
 
 def step_sync_raw_with_cleaned(df):
 
-	"""
-	After resolution, synchronise raw strings and corrected columns with the cleaned numeric values.
-	- For fallback rows (numeric present, raw empty): set raw string to a clean numeric string
-	  and directly set the corrected column to the numeric value.
-	- For garbage rows (numeric NaN, raw non‑empty): clear raw string and set corrected column to NaN.
-	"""
-	def is_empty(x):
-		return not isinstance(x, str) or x.strip() == ''
+    """
+    After resolution, synchronise raw strings and corrected columns with the cleaned numeric values.
+    - For fallback rows (numeric present, raw empty): set raw string to a clean numeric string
+      and directly set the corrected column to the numeric value.
+    - For garbage rows (numeric NaN, raw non‑empty): clear raw string and set corrected column to NaN.
+    """
+    def is_empty(x):
+        return not isinstance(x, str) or x.strip() == ''
 
-	if 'Debits_Raw' in df.columns and 'Debits' in df.columns:
-		# Fallback: numeric present, raw empty
-		mask = df['Debits'].notna() & (df['Debits_Raw'].apply(is_empty))
-		if mask.any():
-			# Use a clean two‑decimal string to avoid OCR mis‑parsing
-			clean_str = df.loc[mask, 'Debits'].apply(lambda x: f"{x:.2f}")
-			df.loc[mask, 'Debits_Raw'] = clean_str
-			if 'Debits_Corrected' in df.columns:
-				df.loc[mask, 'Debits_Corrected'] = df.loc[mask, 'Debits']
+    if 'Debits_Raw' in df.columns and 'Debits' in df.columns:
+        # Fallback: numeric present, raw empty
+        mask = df['Debits'].notna() & (df['Debits_Raw'].apply(is_empty))
+        if mask.any():
+            # Use a clean two‑decimal string to avoid OCR mis‑parsing
+            clean_str = df.loc[mask, 'Debits'].apply(lambda x: f"{x:.2f}")
+            df.loc[mask, 'Debits_Raw'] = clean_str
+            if 'Debits_Corrected' in df.columns:
+                df.loc[mask, 'Debits_Corrected'] = df.loc[mask, 'Debits']
 
-		# Garbage: numeric NaN, raw non‑empty
-		mask2 = df['Debits'].isna() & (~df['Debits_Raw'].apply(is_empty))
-		if mask2.any():
-			df.loc[mask2, 'Debits_Raw'] = ''
-			if 'Debits_Corrected' in df.columns:
-				df.loc[mask2, 'Debits_Corrected'] = np.nan
+        # Garbage: numeric NaN, raw non‑empty
+        mask2 = df['Debits'].isna() & (~df['Debits_Raw'].apply(is_empty))
+        if mask2.any():
+            df.loc[mask2, 'Debits_Raw'] = ''
+            if 'Debits_Corrected' in df.columns:
+                df.loc[mask2, 'Debits_Corrected'] = np.nan
 
-	if 'Credits_Raw' in df.columns and 'Credits' in df.columns:
-		# Fallback: numeric present, raw empty
-		mask = df['Credits'].notna() & (df['Credits_Raw'].apply(is_empty))
-		if mask.any():
-			clean_str = df.loc[mask, 'Credits'].apply(lambda x: f"{x:.2f}")
-			df.loc[mask, 'Credits_Raw'] = clean_str
-			if 'Credits_Corrected' in df.columns:
-				df.loc[mask, 'Credits_Corrected'] = df.loc[mask, 'Credits']
+    if 'Credits_Raw' in df.columns and 'Credits' in df.columns:
+        # Fallback: numeric present, raw empty
+        mask = df['Credits'].notna() & (df['Credits_Raw'].apply(is_empty))
+        if mask.any():
+            clean_str = df.loc[mask, 'Credits'].apply(lambda x: f"{x:.2f}")
+            df.loc[mask, 'Credits_Raw'] = clean_str
+            if 'Credits_Corrected' in df.columns:
+                df.loc[mask, 'Credits_Corrected'] = df.loc[mask, 'Credits']
 
-		# Garbage: numeric NaN, raw non‑empty
-		mask2 = df['Credits'].isna() & (~df['Credits_Raw'].apply(is_empty))
-		if mask2.any():
-			df.loc[mask2, 'Credits_Raw'] = ''
-			if 'Credits_Corrected' in df.columns:
-				df.loc[mask2, 'Credits_Corrected'] = np.nan
-	return df
+        # Garbage: numeric NaN, raw non‑empty
+        mask2 = df['Credits'].isna() & (~df['Credits_Raw'].apply(is_empty))
+        if mask2.any():
+            df.loc[mask2, 'Credits_Raw'] = ''
+            if 'Credits_Corrected' in df.columns:
+                df.loc[mask2, 'Credits_Corrected'] = np.nan
+    return df
 
 
 
 def run_step(step_name, func, df):
-	"""
-	Helper function to run each step with error handling
-	"""
-	try:
-		# print(f"\n>>> Running step: {step_name}")
-		df = func(df)
-		print(f"<<< Step {step_name} completed")
-	except Exception as e:
-		print(f"{step_name}: FAILED with error: {e}\n")
-	return df
+    """
+    Helper function to run each step with error handling
+    """
+    try:
+        # print(f"\n>>> Running step: {step_name}")
+        df = func(df)
+        print(f"<<< Step {step_name} completed")
+    except Exception as e:
+        print(f"{step_name}: FAILED with error: {e}\n")
+    return df
 
 
 def clean_bank_statement(df, file_path=None, logging=True):
-	"""
-	Main cleaning pipeline for bank statements
-	"""
-	df.columns = [str(col).strip().capitalize() for col in df.columns]
+    """
+    Main cleaning pipeline for bank statements
+    """
+    df.columns = [str(col).strip().capitalize() for col in df.columns]
 
-	def step_clean_debit_credit(df): return clean_debit_credit(df)
+    def step_clean_debit_credit(df): return clean_debit_credit(df)
 
-	def step_remove_duplicate_column(df): return remove_duplicate_column(df)
+    def step_remove_duplicate_column(df): return remove_duplicate_column(df)
 
-	def step_normalize_headers(df): return normalize_headers(df)
+    def step_normalize_headers(df): return normalize_headers(df)
 
-	def step_merge_partial_rows(df):
-		# Fix the applymap deprecation
-		for col in df.columns:
-			df[col] = df[col].apply(lambda x: x.strip() if isinstance(x, str) else x)
-		
-		df = df.replace('', pd.NA)
-		df = df.dropna(how='all')
-		df.reset_index(drop=True, inplace=True)
-		rows_to_drop = []
-		for i in range(1, len(df)):
-			row = df.iloc[i]
-			if is_partial_row(row):
-				for col in df.columns:
-					if any(k in col.lower() for k in ['narration', 'description']):
-						df.at[i - 1, col] = str(
-							df.iloc[i - 1][col]) + ' ' + str(df.iloc[i][col])
-				rows_to_drop.append(i)
-		df.drop(index=df.index[rows_to_drop], inplace=True)
-		df.reset_index(drop=True, inplace=True)
-		return df
-	
-	def step_resolve_drcr_balance(df):
-		return resolve_debit_credit_using_balance(df)
+    def step_merge_partial_rows(df):
+        # Fix the applymap deprecation
+        for col in df.columns:
+            df[col] = df[col].apply(lambda x: x.strip() if isinstance(x, str) else x)
+        
+        df = df.replace('', pd.NA)
+        df = df.dropna(how='all')
+        df.reset_index(drop=True, inplace=True)
+        rows_to_drop = []
+        for i in range(1, len(df)):
+            row = df.iloc[i]
+            if is_partial_row(row):
+                for col in df.columns:
+                    if any(k in col.lower() for k in ['narration', 'description']):
+                        df.at[i - 1, col] = str(
+                            df.iloc[i - 1][col]) + ' ' + str(df.iloc[i][col])
+                rows_to_drop.append(i)
+        df.drop(index=df.index[rows_to_drop], inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        return df
+    
+    def step_resolve_drcr_balance(df):
+        return resolve_debit_credit_using_balance(df)
 
-	def step_remove_metadata_rows(df):
-		"""
-		Remove ANY row where ANY cell fuzzy-matches a metadata phrase
-		OR matches specific regex patterns for unwanted transactions.
-		Uses RapidFuzz (threshold ≥70) on all columns.
-		"""
-		# Comprehensive metadata phrases (including common OCR errors)
-		METADATA_PHRASES = [
-			"BROUGHT FORWARD", "BROUGHTFORWARD", "BROUGHT FWD", "B/F", "BF",
-			"CARRIED FORWARD", "CARRIEDFORWARD", "CARRIED FWD", "C/F", "CF",
-			"CLOSING BALANCE", "CLOSINGBALANCE", "CLOSING BAL", "CL BAL",
-			"OPENING BALANCE", "OPENINGBALANCE", "OPENING BAL", "OP BAL",
-			"BALANCE", "TOTAL" , "SUB TOTAL", "SUBTOTAL","Brought Forward"
-			"TOTAL AMOUNT", "TOTAL AMT", "GRAND TOTAL", "SUMMARY",
-			"TRANSACTION TOTAL", "TRANSACTIONTOTAL",
-			"TOTAL DEBIT", "TOTAL CREDIT", "TOTALDEBIT", "TOTALCREDIT",
-			"YOUR OPENING", "BALANCE ON","PageTotal",
-			"LOSINGBALANCE", "RROUGHTFOROWARD", "BROOGHTFORWARD",
-			"TRANSACTIONTOTAI", "TRANSACTION TOTAL DRICR","page","Page",
-			"BALANCE CARRIED", "BALANCE BROUGHT","Cumulative Totals","b/f..","ance","TotalNumberofTransactions","Turnover"
-		]
+    def step_remove_metadata_rows(df):
+        """
+        Remove ANY row where ANY cell fuzzy-matches a metadata phrase
+        OR matches specific regex patterns for unwanted transactions.
+        Uses RapidFuzz (threshold ≥70) on all columns.
+        """
+        # Comprehensive metadata phrases (including common OCR errors)
+        METADATA_PHRASES = [
+            "BROUGHT FORWARD", "BROUGHTFORWARD", "BROUGHT FWD", "B/F", "BF",
+            "CARRIED FORWARD", "CARRIEDFORWARD", "CARRIED FWD", "C/F", "CF",
+            "CLOSING BALANCE", "CLOSINGBALANCE", "CLOSING BAL", "CL BAL",
+            "OPENING BALANCE", "OPENINGBALANCE", "OPENING BAL", "OP BAL",
+            "BALANCE", "TOTAL" , "SUB TOTAL", "SUBTOTAL","Brought Forward"
+            "TOTAL AMOUNT", "TOTAL AMT", "GRAND TOTAL", "SUMMARY",
+            "TRANSACTION TOTAL", "TRANSACTIONTOTAL",
+            "TOTAL DEBIT", "TOTAL CREDIT", "TOTALDEBIT", "TOTALCREDIT",
+            "YOUR OPENING", "BALANCE ON","PageTotal",
+            "LOSINGBALANCE", "RROUGHTFOROWARD", "BROOGHTFORWARD",
+            "TRANSACTIONTOTAI", "TRANSACTION TOTAL DRICR","page","Page",
+            "BALANCE CARRIED", "BALANCE BROUGHT","Cumulative Totals","b/f..","ance","TotalNumberofTransactions","Turnover"
+        ]
 
-		# Clean and lowercase once
-		phrases_clean = [p.lower().strip() for p in METADATA_PHRASES]
+        # Clean and lowercase once
+        phrases_clean = [p.lower().strip() for p in METADATA_PHRASES]
 
-		
-		# Combined regex to catch:
-		# - "brought forward" 
-		# - "opening balance" 
-		# - "closing balance" 
-		USELESS_TXN_REGEX = re.compile(
-			r'\bbrought\s*forward\b|\bopening\s*balance\b|\bclosing\s*balance\b',
-			re.IGNORECASE
-		)
+        
+        # Combined regex to catch:
+        # - "brought forward" 
+        # - "opening balance" 
+        # - "closing balance" 
+        USELESS_TXN_REGEX = re.compile(
+            r'\bbrought\s*forward\b|\bopening\s*balance\b|\bclosing\s*balance\b',
+            re.IGNORECASE
+        )
 
-		def is_metadata_row(row):
-			"""Return True if ANY cell in the row fuzzy-matches ANY metadata phrase
-			OR matches the useless transaction regex."""
-			for col in row.index:
-				cell = str(row[col]).strip()
-				if not cell or cell.lower() in ["nan", "none", ""]:
-					continue
-				cell_lower = cell.lower()
+        def is_metadata_row(row):
+            """Return True if ANY cell in the row fuzzy-matches ANY metadata phrase
+            OR matches the useless transaction regex."""
+            for col in row.index:
+                cell = str(row[col]).strip()
+                if not cell or cell.lower() in ["nan", "none", ""]:
+                    continue
+                cell_lower = cell.lower()
 
-				# 1. Fuzzy match against metadata phrases
-				for phrase in phrases_clean:
-					if len(phrase) < 4 and phrase not in ["b/f", "c/f", "bf", "cf"]:
-						continue
-					ratio = rfuzz.ratio(cell_lower, phrase)
-					if ratio >= 75:
-						return True
+                # 1. Fuzzy match against metadata phrases
+                for phrase in phrases_clean:
+                    if len(phrase) < 4 and phrase not in ["b/f", "c/f", "bf", "cf"]:
+                        continue
+                    ratio = rfuzz.ratio(cell_lower, phrase)
+                    if ratio >= 75:
+                        return True
 
-				# 2. Regex match for useless transaction patterns+	
-				if USELESS_TXN_REGEX.search(cell):
-					return True
+                # 2. Regex match for useless transaction patterns+	
+                if USELESS_TXN_REGEX.search(cell):
+                    return True
 
-			return False
+            return False
 
-		# Apply filter – remove rows where condition is True
-		mask = df.apply(is_metadata_row, axis=1)
-		removed_count = mask.sum()
-		if removed_count > 0:
-			# print(f"Removed {removed_count} metadata row(s) (fuzzy match or regex pattern)")
-			# Print the rows that were removed
-			removed_rows = df[mask]
-			# print("Rows removed:")
-			for idx, row in removed_rows.iterrows():
-				# Format a concise representation: index and first few non-empty values
-				row_preview = " | ".join(str(v)[:50] for v in row if pd.notna(v) and str(v).strip())
-				# print(f"  Row {idx}: {row_preview}")
-				narration = row.get("Narration", "")  # safe access
-				# print(f"Removed Row {idx} | Narration: {narration}")
-		else:
-			# print("No metadata rows removed.")
-			pass
-		df = df[~mask]
+        # Apply filter – remove rows where condition is True
+        mask = df.apply(is_metadata_row, axis=1)
+        removed_count = mask.sum()
+        if removed_count > 0:
+            # print(f"Removed {removed_count} metadata row(s) (fuzzy match or regex pattern)")
+            # Print the rows that were removed
+            removed_rows = df[mask]
+            # print("Rows removed:")
+            for idx, row in removed_rows.iterrows():
+                # Format a concise representation: index and first few non-empty values
+                row_preview = " | ".join(str(v)[:50] for v in row if pd.notna(v) and str(v).strip())
+                # print(f"  Row {idx}: {row_preview}")
+                narration = row.get("Narration", "")  # safe access
+                # print(f"Removed Row {idx} | Narration: {narration}")
+        else:
+            # print("No metadata rows removed.")
+            pass
+        df = df[~mask]
 
-		return df
+        return df
 
-	def step_parse_amounts(df):
-		# Store original string values BEFORE processing
-		if 'Debits' in df.columns:   
-			df['Debits_Raw'] = df['Debits'].astype(str)
-		if 'Credits' in df.columns:
-			df['Credits_Raw'] = df['Credits'].astype(str)
-		if 'Balance' in df.columns:
-			df['Balance_Raw'] = df['Balance'].astype(str)
-		
-		for col in df.columns:
-			if any(key in col.lower() for key in ['credit', 'debit', 'amount', 'withdrawalamt', 'deposit amt.']):
-				# Skip raw columns we just created
-				if col.endswith('_Raw'):
-					continue
-				df[col] = df[col].apply(extract_amount)
-				if df[col].isnull().all():
-					df.drop(columns=[col], inplace=True)
-		return df
+    def step_parse_amounts(df):
+        # Store original string values BEFORE processing
+        if 'Debits' in df.columns:   
+            df['Debits_Raw'] = df['Debits'].astype(str)
+        if 'Credits' in df.columns:
+            df['Credits_Raw'] = df['Credits'].astype(str)
+        if 'Balance' in df.columns:
+            df['Balance_Raw'] = df['Balance'].astype(str)
+        
+        for col in df.columns:
+            if any(key in col.lower() for key in ['credit', 'debit', 'amount', 'withdrawalamt', 'deposit amt.']):
+                # Skip raw columns we just created
+                if col.endswith('_Raw'):
+                    continue
+                df[col] = df[col].apply(extract_amount)
+                if df[col].isnull().all():
+                    df.drop(columns=[col], inplace=True)
+        return df
 
-	def step_process_all_dates(df):
-		return process_all_dates(df, file_path, logging)
+    def step_process_all_dates(df):
+        return process_all_dates(df, file_path, logging)
 
-	def step_cleanup_columns(df):
-		df.dropna(axis=1, how='all', inplace=True)
-		df = df.loc[:, df.apply(lambda col: col.astype(str).str.strip()).ne('').any()]
-		df.reset_index(drop=True, inplace=True)
-		return df
+    def step_cleanup_columns(df):
+        df.dropna(axis=1, how='all', inplace=True)
+        df = df.loc[:, df.apply(lambda col: col.astype(str).str.strip()).ne('').any()]
+        df.reset_index(drop=True, inplace=True)
+        return df
 
-	def step_create_ocr_corrected_columns(df):
-		"""NEW STEP: Create OCR corrected columns using RAW string values"""
-		return create_ocr_corrected_columns(df)
+    def step_create_ocr_corrected_columns(df):
+        """NEW STEP: Create OCR corrected columns using RAW string values"""
+        return create_ocr_corrected_columns(df)
 
-	def step_ensure_required_columns(df):
-		"""
-		Ensure all required columns exist and apply final formatting
-		"""
-		required_columns = ["XN Date", "Cheque No", "Narration", "Debits", "Credits", "Balance"]
+    def step_ensure_required_columns(df):
+        """
+        Ensure all required columns exist and apply final formatting
+        """
+        required_columns = ["XN Date", "Cheque No", "Narration", "Debits", "Credits", "Balance"]
 
-		# Helper function to round to 2 decimal places
-		def round_to_2_if_numeric(val):
-			if pd.isna(val) or str(val).strip().lower() in ["", "nan", "none"]:
-				return ""
-			try:
-				return round(float(val), 2)
-			except:
-				return val
+        # Helper function to round to 2 decimal places
+        def round_to_2_if_numeric(val):
+            if pd.isna(val) or str(val).strip().lower() in ["", "nan", "none"]:
+                return ""
+            try:
+                return round(float(val), 2)
+            except:
+                return val
 
-		# Use corrected values if available
-		if 'Debits_Corrected' in df.columns:
-			df['Debits'] = df['Debits_Corrected'].apply(
-				lambda x: (
-					round(float(x), 2) if float(x) < 0
-					else round(-1 * float(x), 2)
-				) if pd.notna(x) else ""
-			)
+        # Use corrected values if available
+        if 'Debits_Corrected' in df.columns:
+            df['Debits'] = df['Debits_Corrected'].apply(
+                lambda x: (
+                    round(float(x), 2) if float(x) < 0
+                    else round(-1 * float(x), 2)
+                ) if pd.notna(x) else ""
+            )
 
-		elif "Debits" in df.columns:
-			df["Debits"] = df["Debits"].apply(
-				lambda x: (
-					round(float(x), 2) if float(x) < 0
-					else round(-1 * float(x), 2)
-				)
-				if str(x).strip() not in ["", "nan", "None"]
-				else ""
-			)
+        elif "Debits" in df.columns:
+            df["Debits"] = df["Debits"].apply(
+                lambda x: (
+                    round(float(x), 2) if float(x) < 0
+                    else round(-1 * float(x), 2)
+                )
+                if str(x).strip() not in ["", "nan", "None"]
+                else ""
+            )
 
-		# Credits → positive, empty stays empty
-		if 'Credits_Corrected' in df.columns:
-			df['Credits'] = df['Credits_Corrected'].apply(
-				lambda x: round(float(x), 2) if pd.notna(x) else ""
-			)
-		elif "Credits" in df.columns:
-			df["Credits"] = df["Credits"].apply(
-				lambda x: round(float(x), 2)
-				if str(x).strip() not in ["", "nan", "None"]
-				else ""
-			)
+        # Credits → positive, empty stays empty
+        if 'Credits_Corrected' in df.columns:
+            df['Credits'] = df['Credits_Corrected'].apply(
+                lambda x: round(float(x), 2) if pd.notna(x) else ""
+            )
+        elif "Credits" in df.columns:
+            df["Credits"] = df["Credits"].apply(
+                lambda x: round(float(x), 2)
+                if str(x).strip() not in ["", "nan", "None"]
+                else ""
+            )
    
 
-		# Balance - use corrected if available
-		if 'Balance_Corrected' in df.columns:
-			df['Balance'] = df['Balance_Corrected'].apply(round_to_2_if_numeric)
-		elif "Balance" in df.columns:
-			df["Balance"] = df["Balance"].apply(
-				lambda x: round(float(x), 2)
-				if str(x).strip() not in ["", "nan", "None"]
-				else ""
-			)
+        # Balance - use corrected if available
+        if 'Balance_Corrected' in df.columns:
+            df['Balance'] = df['Balance_Corrected'].apply(round_to_2_if_numeric)
+        elif "Balance" in df.columns:
+            df["Balance"] = df["Balance"].apply(
+                lambda x: round(float(x), 2)
+                if str(x).strip() not in ["", "nan", "None"]
+                else ""
+            )
 
-		# Narration cleanup and metadata removal
-		def _is_empty_amount(val):
-			return (
-				pd.isna(val) or
-				str(val).strip().lower() in ["", "nan", "none", "0", "0.0", "0.00"]
-			)
-		
-		if all(col in df.columns for col in ["Narration", "Debits", "Credits", "Balance"]):
-			def _remove_metadata_row(row):
-				narration = str(row["Narration"]).strip()
-				debit = row["Debits"]
-				credit = row["Credits"]
-				balance = row["Balance"]
+        # Narration cleanup and metadata removal
+        def _is_empty_amount(val):
+            return (
+                pd.isna(val) or
+                str(val).strip().lower() in ["", "nan", "none", "0", "0.0", "0.00"]
+            )
+        
+        if all(col in df.columns for col in ["Narration", "Debits", "Credits", "Balance"]):
+            def _remove_metadata_row(row):
+                narration = str(row["Narration"]).strip()
+                debit = row["Debits"]
+                credit = row["Credits"]
+                balance = row["Balance"]
 
-				if narration and _is_empty_amount(debit) and _is_empty_amount(credit) and _is_empty_amount(balance):
-					return True
-				return False
+                if narration and _is_empty_amount(debit) and _is_empty_amount(credit) and _is_empty_amount(balance):
+                    return True
+                return False
 
-			df = df[~df.apply(_remove_metadata_row, axis=1)]
+            df = df[~df.apply(_remove_metadata_row, axis=1)]
 
-		for col in required_columns:
-			if col not in df.columns:
-				df[col] = ""
+        for col in required_columns:
+            if col not in df.columns:
+                df[col] = ""
 
-		df = df[[col for col in required_columns if col in df.columns]]
-		return df
-	
-	def step_remove_consecutive_duplicates(df):
-		"""
-		Remove only consecutive duplicate rows (OCR duplicate issue).
-		Keeps the first occurrence and removes immediate next identical row.
-		"""
+        df = df[[col for col in required_columns if col in df.columns]]
+        return df
+    
+    def step_remove_consecutive_duplicates(df):
+        """
+        Remove only consecutive duplicate rows (OCR duplicate issue).
+        Keeps the first occurrence and removes immediate next identical row.
+        """
 
-		def rows_equal(row1, row2):
-			for col in df.columns:
-				v1 = str(row1[col]).strip()
-				v2 = str(row2[col]).strip()
-				if v1 != v2:
-					return False
-			return True
+        def rows_equal(row1, row2):
+            for col in df.columns:
+                v1 = str(row1[col]).strip()
+                v2 = str(row2[col]).strip()
+                if v1 != v2:
+                    return False
+            return True
 
-		rows_to_drop = []
+        rows_to_drop = []
 
-		for i in range(1, len(df)):
-			if rows_equal(df.iloc[i], df.iloc[i - 1]):
-				rows_to_drop.append(i)
+        for i in range(1, len(df)):
+            if rows_equal(df.iloc[i], df.iloc[i - 1]):
+                rows_to_drop.append(i)
 
-		if rows_to_drop:
-			# print(f"Removed {len(rows_to_drop)} consecutive duplicate row(s)")
-			pass
+        if rows_to_drop:
+            # print(f"Removed {len(rows_to_drop)} consecutive duplicate row(s)")
+            pass
 
-		df = df.drop(index=df.index[rows_to_drop]).reset_index(drop=True)
-		return df
-	
-	def remove_blank_rows(df):
-		return df[~(
-			(df['Narration'].isna() | (df['Narration'].str.strip() == '')) &
-			(df['Credits'].isna() | (df['Credits'].astype(str).str.strip() == '')) &
-			(df['Debits'].isna() | (df['Debits'].astype(str).str.strip() == ''))
-		)]
+        df = df.drop(index=df.index[rows_to_drop]).reset_index(drop=True)
+        return df
+    
+    def remove_blank_rows(df):
+        return df[~(
+            (df['Narration'].isna() | (df['Narration'].str.strip() == '')) &
+            (df['Credits'].isna() | (df['Credits'].astype(str).str.strip() == '')) &
+            (df['Debits'].isna() | (df['Debits'].astype(str).str.strip() == ''))
+        )]
 
-	# Run all cleaning steps in sequence
-	df = run_step("clean_debit_credit", step_clean_debit_credit, df)
-	df = merge_balance_with_adjacent_type(df)
+    # Run all cleaning steps in sequence
+    df = run_step("clean_debit_credit", step_clean_debit_credit, df)
+    df = merge_balance_with_adjacent_type(df)
 
-	df = run_step("remove_duplicate_column", step_remove_duplicate_column, df)
-	df = run_step("normalize_headers", step_normalize_headers, df)
-	df = run_step("merge_partial_rows", step_merge_partial_rows, df)
-	# Parse amounts FIRST (but save raw values)
-	df = run_step("parse_amounts", step_parse_amounts, df)
-	df = run_step("resolve_debit_credit_using_balance", step_resolve_drcr_balance, df)
-	df = run_step("sync_raw_with_cleaned", step_sync_raw_with_cleaned, df)
-	df = run_step("remove_metadata_rows", step_remove_metadata_rows, df)
-	
-	# Add the new step for OCR correction (uses raw values saved in parse_amounts)
-	df = run_step("create_ocr_corrected_columns", step_create_ocr_corrected_columns, df)
-	
-	# print(f"\n>>> Running step: process_all_dates")
-	df = step_process_all_dates(df)
-	# print(f"<<< Step process_all_dates completed")
-	
-	df = run_step("cleanup_columns", step_cleanup_columns, df)
-	df = run_step("ensure_required_columns", step_ensure_required_columns, df)
-	
-	df = run_step("remove_consecutive_duplicates", step_remove_consecutive_duplicates, df)
+    df = run_step("remove_duplicate_column", step_remove_duplicate_column, df)
+    df = run_step("normalize_headers", step_normalize_headers, df)
+    df = run_step("merge_partial_rows", step_merge_partial_rows, df)
+    # Parse amounts FIRST (but save raw values)
+    df = run_step("parse_amounts", step_parse_amounts, df)
+    df = run_step("resolve_debit_credit_using_balance", step_resolve_drcr_balance, df)
+    df = run_step("sync_raw_with_cleaned", step_sync_raw_with_cleaned, df)
+    df = run_step("remove_metadata_rows", step_remove_metadata_rows, df)
+    
+    # Add the new step for OCR correction (uses raw values saved in parse_amounts)
+    df = run_step("create_ocr_corrected_columns", step_create_ocr_corrected_columns, df)
+    
+    # print(f"\n>>> Running step: process_all_dates")
+    df = step_process_all_dates(df)
+    # print(f"<<< Step process_all_dates completed")
+    
+    df = run_step("cleanup_columns", step_cleanup_columns, df)
+    df = run_step("ensure_required_columns", step_ensure_required_columns, df)
+    
+    df = run_step("remove_consecutive_duplicates", step_remove_consecutive_duplicates, df)
 
-	df = remove_blank_rows(df)
-	
-	return df
+    df = remove_blank_rows(df)
+    
+    return df
 
 
 def clean_main(file_path, output_path, logging=True, debug=True):
-	"""
-	Main function to process bank statement files
-	"""
-	try:
-		print(f"\nProcessing file: {file_path}")
-		print(f"Logging enabled: {logging}")
-		print(f"Debug mode: {debug}")
-		
-		df_raw = pd.read_csv(file_path, header=None)
-		# df_raw = run_step("clean_by_majority_structure",clean_by_majority_structure,df_raw)
-		clean_df, csv_files = clean_by_majority_structure(df_raw)
+    """
+    Main function to process bank statement files
+    """
+    try:
+        print(f"\nProcessing file: {file_path}")
+        print(f"Logging enabled: {logging}")
+        print(f"Debug mode: {debug}")
+        
+        df_raw = pd.read_csv(file_path, header=None)
+        # df_raw = run_step("clean_by_majority_structure",clean_by_majority_structure,df_raw)
+        clean_df, csv_files = clean_by_majority_structure(df_raw)
 
-		header_row = None
+        header_row = None
 
-		for name, csv_data  in csv_files.items():
-			try:
-				df_raw = pd.read_csv(StringIO(csv_data))
+        for name, csv_data  in csv_files.items():
+            try:
+                df_raw = pd.read_csv(StringIO(csv_data))
 
-				header_row = detect_header_row(df_raw)
+                header_row = detect_header_row(df_raw)
 
-				if header_row is not None:
-					df_raw,indices=drop_last_rows(df_raw)
-					break
-			except Exception as e:
-				print(f"{name} failed: {e}")
-		
-		if header_row is not None:
-			df_raw = df_raw.iloc[header_row:]
-			df_raw.columns = df_raw.iloc[0].str.strip()  # Set headers (strip spaces)
-			df_raw = df_raw.loc[:, df_raw.columns.notna()]  # Remove NaN headers
-			df = df_raw.reset_index(drop=True)  # Set actual header
+                if header_row is not None:
+                    df_raw,indices=drop_last_rows(df_raw)
+                    break
+            except Exception as e:
+                print(f"{name} failed: {e}")
+        
+        if header_row is not None:
+            df_raw = df_raw.iloc[header_row:]
+            df_raw.columns = df_raw.iloc[0].str.strip()  # Set headers (strip spaces)
+            df_raw = df_raw.loc[:, df_raw.columns.notna()]  # Remove NaN headers
+            df = df_raw.reset_index(drop=True)  # Set actual header
 
-			cleaned_df = clean_bank_statement(df, file_path, logging)
-			try:
-				cleaned_df[["Debits", "Credits"]] = cleaned_df[["Debits", "Credits"]].replace({"NA":np.nan, "-":np.nan,"0":np.nan, "0.00":np.nan, 0:np.nan})
-			except:pass
+            cleaned_df = clean_bank_statement(df, file_path, logging)
+            try:
+                cleaned_df[["Debits", "Credits"]] = cleaned_df[["Debits", "Credits"]].replace({"NA":np.nan, "-":np.nan,"0":np.nan, "0.00":np.nan, 0:np.nan})
+            except:pass
 
-			if cleaned_df is not None and not cleaned_df.empty:
-				# NEW: Calculate differences and verify OCR accuracy
-				# print("\n" + "="*60)
-				# print("OCR VERIFICATION AND DIFFERENCE CALCULATION")
-				# print("="*60)
-				
-				# Create dataframe with corrected columns and differences
-				df_with_diff, all_correct, adjusted = calculate_difference_and_verify(cleaned_df)
-				
-				# REQUIREMENT 2: Update cleaned_df with adjusted balances if adjustment was made
-				if adjusted and 'Balance_Adjusted' in df_with_diff.columns:
-					# Update the Balance column in cleaned_df with adjusted values
-					if 'Balance_Corrected' in cleaned_df.columns:
-						cleaned_df['Balance_Corrected'] = df_with_diff['Balance_Adjusted']
-					# Also update the main Balance column
-					cleaned_df['Balance'] = df_with_diff['Balance_Adjusted']
-					# print("✓ Updated cleaned file with adjusted balances.")
-				
-				
-				# Update corrected columns to reflect sign changes (if they exist)
-				if 'Debits_Corrected' in cleaned_df.columns:
-					cleaned_df['Debits_Corrected'] = cleaned_df['Debits']
-				if 'Credits_Corrected' in cleaned_df.columns:
-					cleaned_df['Credits_Corrected'] = cleaned_df['Credits']
-				if 'Balance_Corrected' in cleaned_df.columns:
-					cleaned_df['Balance_Corrected'] = cleaned_df['Balance']
-				
-				# Re-run the balance verification with the corrected signs
-				df_with_diff, all_correct, adjusted = calculate_difference_and_verify(cleaned_df)
-				
-				# Update cleaned_df with the final adjusted balances (if any)
-				if adjusted and 'Balance_Adjusted' in df_with_diff.columns:
-					if 'Balance_Corrected' in cleaned_df.columns:
-						cleaned_df['Balance_Corrected'] = df_with_diff['Balance_Adjusted']
-					cleaned_df['Balance'] = df_with_diff['Balance_Adjusted']
-				
-				# ========== FINAL SIGN CORRECTION (only at the end) ==========
-				# Ensure Credits are positive
-				if 'Credits' in cleaned_df.columns:
-					cleaned_df['Credits'] = pd.to_numeric(cleaned_df['Credits'], errors='coerce')
-					cleaned_df['Credits'] = cleaned_df['Credits'].abs()
-				
-				# Correct Debit signs based on balance movement
-				if 'Debits' in cleaned_df.columns and 'Balance' in cleaned_df.columns:
-					cleaned_df['Debits'] = pd.to_numeric(cleaned_df['Debits'], errors='coerce')
-					cleaned_df['Balance'] = pd.to_numeric(cleaned_df['Balance'], errors='coerce')
-					cleaned_df = cleaned_df.reset_index(drop=True)
-					for i in range(1, len(cleaned_df)):
-						prev_bal = cleaned_df.iloc[i-1]['Balance']
-						curr_bal = cleaned_df.iloc[i]['Balance']
-						debit = cleaned_df.iloc[i]['Debits']
-						if pd.notna(prev_bal) and pd.notna(curr_bal) and pd.notna(debit):
-							if curr_bal < prev_bal and debit > 0:
-								cleaned_df.iloc[i, cleaned_df.columns.get_loc('Debits')] = -debit
-							elif curr_bal > prev_bal and debit < 0:
-								cleaned_df.iloc[i, cleaned_df.columns.get_loc('Debits')] = abs(debit)
-				# ============================================================
-				
-				# ========== RECALCULATE DIFFERENCES AFTER SIGN CORRECTION ==========
-				df_with_diff_final, all_correct_final, adjusted_final = calculate_difference_and_verify(cleaned_df)
-				if adjusted_final and 'Balance_Adjusted' in df_with_diff_final.columns:
-					if 'Balance_Corrected' in cleaned_df.columns:
-						cleaned_df['Balance_Corrected'] = df_with_diff_final['Balance_Adjusted']
-					cleaned_df['Balance'] = df_with_diff_final['Balance_Adjusted']
-				df_with_diff = df_with_diff_final  # Use this for debug
-				# ==================================================================
-				cleaned_df = remove_trailing_summary_rows(cleaned_df)
-				df_with_diff = remove_trailing_summary_rows(df_with_diff)
-				# Save the main cleaned file (without debug columns)
-				required_cols = ['XN Date', 'Cheque No', 'Narration', 'Debits', 'Credits', 'Balance']
-				available_cols = [col for col in required_cols if col in cleaned_df.columns]
-				main_cleaned_df = cleaned_df[available_cols]
-				main_cleaned_df.to_csv(output_path, index=False)
-				
-				# print(f"\n✓ MAIN FILE: Cleaned file saved to: {output_path}")
-				
-				# Save debug file with all new columns as Excel ONLY if debug=True
-				if debug:
-					debug_output_path = output_path.replace('.csv', '_debug.xlsx')
-					
-					# Prepare debug dataframe with all columns
-					debug_cols = []
-					
-					# Add basic columns
-					basic_cols = ['XN Date', 'Cheque No', 'Narration']
-					for col in basic_cols:
-						if col in df_with_diff.columns:
-							debug_cols.append(col)
-					
-					# Add original amount columns
-					for col in ['Debits', 'Credits', 'Balance']:
-						if col in df_with_diff.columns:
-							debug_cols.append(col + '_Original')
-							# Store original values
-							df_with_diff[col + '_Original'] = df_with_diff[col]
-					
-					# Add corrected columns
-					for col in ['Debits_Corrected', 'Credits_Corrected', 'Balance_Corrected']:
-						if col in df_with_diff.columns:
-							debug_cols.append(col)
-					
-					# Add adjusted balance column if available
-					if 'Balance_Adjusted' in df_with_diff.columns:
-						debug_cols.append('Balance_Adjusted')
-					
-					# Add difference column
-					if 'Difference' in df_with_diff.columns:
-						debug_cols.append('Difference')
-					
-					# Create debug dataframe
-					debug_df = df_with_diff[debug_cols].copy()
-					
-					# Save to Excel
-					debug_df.to_excel(debug_output_path, index=False)
-					# print(f"✓ DEBUG FILE: Full analysis saved to: {debug_output_path}")
-				else:
-					# print("✓ Debug file not created (debug=False)")
-					pass
-				
-				
-				# Check if corrected values differ from original
-				corrections_made = 0
-				
-				if 'Debits_Corrected' in df_with_diff.columns and 'Debits_Original' in df_with_diff.columns:
-					# Compare non-null values
-					mask = ~pd.isna(df_with_diff['Debits_Corrected'])
-					if mask.any():
-						# Get the original extracted values (from extract_amount, not string)
-						# We need to convert the original string to number for comparison
-						original_values = df_with_diff.loc[mask, 'Debits_Original'].apply(
-							lambda x: extract_amount(x) if isinstance(x, str) and x.strip() not in ['', 'nan', 'None'] else np.nan
-						)
-						corrected_values = df_with_diff.loc[mask, 'Debits_Corrected']
-						
-						# Compare with tolerance for floating point
-						diff_mask = ~np.isclose(original_values, corrected_values, rtol=1e-9, atol=1e-9)
-						debit_changes = diff_mask.sum()
-						corrections_made += debit_changes
-						# print(f"Debits corrected: {debit_changes} rows")
-				
-				if 'Credits_Corrected' in df_with_diff.columns and 'Credits_Original' in df_with_diff.columns:
-					mask = ~pd.isna(df_with_diff['Credits_Corrected'])
-					if mask.any():
-						original_values = df_with_diff.loc[mask, 'Credits_Original'].apply(
-							lambda x: extract_amount(x) if isinstance(x, str) and x.strip() not in ['', 'nan', 'None'] else np.nan
-						)
-						corrected_values = df_with_diff.loc[mask, 'Credits_Corrected']
-						
-						diff_mask = ~np.isclose(original_values, corrected_values, rtol=1e-9, atol=1e-9)
-						credit_changes = diff_mask.sum()
-						corrections_made += credit_changes
-						#print(f"Credits corrected: {credit_changes} rows")
-				
-				if 'Balance_Corrected' in df_with_diff.columns and 'Balance_Original' in df_with_diff.columns:
-					mask = ~pd.isna(df_with_diff['Balance_Corrected'])
-					if mask.any():
-						original_values = df_with_diff.loc[mask, 'Balance_Original'].apply(
-							lambda x: extract_amount(x) if isinstance(x, str) and x.strip() not in ['', 'nan', 'None'] else np.nan
-						)
-						corrected_values = df_with_diff.loc[mask, 'Balance_Corrected']
-						
-						diff_mask = ~np.isclose(original_values, corrected_values, rtol=1e-9, atol=1e-9)
-						balance_changes = diff_mask.sum()
-						corrections_made += balance_changes
-						#print(f"Balance corrected: {balance_changes} rows")
-				
-				if adjusted_final:
-					# print("\n BALANCES ADJUSTED: Decimal differences have been synchronized.")
-					# print("   Updated balances saved to cleaned file.")
-					pass
-				elif all_correct_final:
-					# print("\n VERIFICATION PASSED: All differences are 0")
-					# print("   The corrected values are mathematically consistent.")
-					pass
-				else:
-					# print("\n  VERIFICATION WARNING: Some differences found")
-					# if debug:
-					#     print("   Check the debug file for details.")
-					# else:
-					#     print("   Run with debug=True to see details.")
-					pass
-				
-				if corrections_made > 0:
-					# print(f"\n TOTAL CORRECTIONS: {corrections_made} values were corrected for OCR errors")
-					pass
-			else:
-				print("ERROR: Cleaned data is empty.")
+            if cleaned_df is not None and not cleaned_df.empty:
+                # NEW: Calculate differences and verify OCR accuracy
+                # print("\n" + "="*60)
+                # print("OCR VERIFICATION AND DIFFERENCE CALCULATION")
+                # print("="*60)
+                
+                # Create dataframe with corrected columns and differences
+                df_with_diff, all_correct, adjusted = calculate_difference_and_verify(cleaned_df)
+                
+                # REQUIREMENT 2: Update cleaned_df with adjusted balances if adjustment was made
+                if adjusted and 'Balance_Adjusted' in df_with_diff.columns:
+                    # Update the Balance column in cleaned_df with adjusted values
+                    if 'Balance_Corrected' in cleaned_df.columns:
+                        cleaned_df['Balance_Corrected'] = df_with_diff['Balance_Adjusted']
+                    # Also update the main Balance column
+                    cleaned_df['Balance'] = df_with_diff['Balance_Adjusted']
+                    # print("✓ Updated cleaned file with adjusted balances.")
+                
+                
+                # Update corrected columns to reflect sign changes (if they exist)
+                if 'Debits_Corrected' in cleaned_df.columns:
+                    cleaned_df['Debits_Corrected'] = cleaned_df['Debits']
+                if 'Credits_Corrected' in cleaned_df.columns:
+                    cleaned_df['Credits_Corrected'] = cleaned_df['Credits']
+                if 'Balance_Corrected' in cleaned_df.columns:
+                    cleaned_df['Balance_Corrected'] = cleaned_df['Balance']
+                
+                # Re-run the balance verification with the corrected signs
+                df_with_diff, all_correct, adjusted = calculate_difference_and_verify(cleaned_df)
+                
+                # Update cleaned_df with the final adjusted balances (if any)
+                if adjusted and 'Balance_Adjusted' in df_with_diff.columns:
+                    if 'Balance_Corrected' in cleaned_df.columns:
+                        cleaned_df['Balance_Corrected'] = df_with_diff['Balance_Adjusted']
+                    cleaned_df['Balance'] = df_with_diff['Balance_Adjusted']
+                
+                # ========== FINAL SIGN CORRECTION (only at the end) ==========
+                # Ensure Credits are positive
+                if 'Credits' in cleaned_df.columns:
+                    cleaned_df['Credits'] = pd.to_numeric(cleaned_df['Credits'], errors='coerce')
+                    cleaned_df['Credits'] = cleaned_df['Credits'].abs()
+                
+                # Correct Debit signs based on balance movement
+                if 'Debits' in cleaned_df.columns and 'Balance' in cleaned_df.columns:
+                    cleaned_df['Debits'] = pd.to_numeric(cleaned_df['Debits'], errors='coerce')
+                    cleaned_df['Balance'] = pd.to_numeric(cleaned_df['Balance'], errors='coerce')
+                    cleaned_df = cleaned_df.reset_index(drop=True)
+                    for i in range(1, len(cleaned_df)):
+                        prev_bal = cleaned_df.iloc[i-1]['Balance']
+                        curr_bal = cleaned_df.iloc[i]['Balance']
+                        debit = cleaned_df.iloc[i]['Debits']
+                        if pd.notna(prev_bal) and pd.notna(curr_bal) and pd.notna(debit):
+                            if curr_bal < prev_bal and debit > 0:
+                                cleaned_df.iloc[i, cleaned_df.columns.get_loc('Debits')] = -debit
+                            elif curr_bal > prev_bal and debit < 0:
+                                cleaned_df.iloc[i, cleaned_df.columns.get_loc('Debits')] = abs(debit)
+                # ============================================================
+                
+                # ========== RECALCULATE DIFFERENCES AFTER SIGN CORRECTION ==========
+                # First, remove summary rows and fill missing balances
+                cleaned_df = remove_trailing_summary_rows(cleaned_df)
+                
+                # Fill missing balances (e.g., from overlapped text like "page")
+                cleaned_df = fill_missing_balances(cleaned_df)
+                
+                # Now recalculate differences with the corrected balances
+                df_with_diff_final, all_correct_final, adjusted_final = calculate_difference_and_verify(cleaned_df)
+                if adjusted_final and 'Balance_Adjusted' in df_with_diff_final.columns:
+                    if 'Balance_Corrected' in cleaned_df.columns:
+                        cleaned_df['Balance_Corrected'] = df_with_diff_final['Balance_Adjusted']
+                    cleaned_df['Balance'] = df_with_diff_final['Balance_Adjusted']
+                df_with_diff = df_with_diff_final  # Use this for debug
+                # ==================================================================
 
-		else:
-			print("ERROR: No header detected in the CSV file.")
+                # Save the main cleaned file (without debug columns)
+                required_cols = ['XN Date', 'Cheque No', 'Narration', 'Debits', 'Credits', 'Balance']
+                available_cols = [col for col in required_cols if col in cleaned_df.columns]
+                main_cleaned_df = cleaned_df[available_cols]
+                main_cleaned_df.to_csv(output_path, index=False)
 
-	except Exception as e:
-		print(f"\n!!! CRITICAL ERROR: {e}")
-		import traceback
-		traceback.print_exc()
+                # Save debug file with all columns (differences will be zero now)
+                if debug:
+                    debug_output_path = output_path.replace('.csv', '_debug.xlsx')
+                    
+                    # Prepare debug dataframe with all columns
+                    debug_cols = []
+                    
+                    # Add basic columns
+                    basic_cols = ['XN Date', 'Cheque No', 'Narration']
+                    for col in basic_cols:
+                        if col in df_with_diff.columns:
+                            debug_cols.append(col)
+                    
+                    # Add original amount columns
+                    for col in ['Debits', 'Credits', 'Balance']:
+                        if col in df_with_diff.columns:
+                            debug_cols.append(col + '_Original')
+                            # Store original values
+                            df_with_diff[col + '_Original'] = df_with_diff[col]
+                    
+                    # Add corrected columns
+                    for col in ['Debits_Corrected', 'Credits_Corrected', 'Balance_Corrected']:
+                        if col in df_with_diff.columns:
+                            debug_cols.append(col)
+                    
+                    # Add adjusted balance column if available
+                    if 'Balance_Adjusted' in df_with_diff.columns:
+                        debug_cols.append('Balance_Adjusted')
+                    
+                    # Add difference column
+                    if 'Difference' in df_with_diff.columns:
+                        debug_cols.append('Difference')
+                    
+                    # Create debug dataframe
+                    debug_df = df_with_diff[debug_cols].copy()
+                    
+                    # Save to Excel
+                    debug_df.to_excel(debug_output_path, index=False)
+                    # print(f"✓ DEBUG FILE: Full analysis saved to: {debug_output_path}")
+                else:
+                    # print("✓ Debug file not created (debug=False)")
+                    pass
+                
+                
+                # Check if corrected values differ from original
+                corrections_made = 0
+                
+                if 'Debits_Corrected' in df_with_diff.columns and 'Debits_Original' in df_with_diff.columns:
+                    # Compare non-null values
+                    mask = ~pd.isna(df_with_diff['Debits_Corrected'])
+                    if mask.any():
+                        # Get the original extracted values (from extract_amount, not string)
+                        # We need to convert the original string to number for comparison
+                        original_values = df_with_diff.loc[mask, 'Debits_Original'].apply(
+                            lambda x: extract_amount(x) if isinstance(x, str) and x.strip() not in ['', 'nan', 'None'] else np.nan
+                        )
+                        corrected_values = df_with_diff.loc[mask, 'Debits_Corrected']
+                        
+                        # Compare with tolerance for floating point
+                        diff_mask = ~np.isclose(original_values, corrected_values, rtol=1e-9, atol=1e-9)
+                        debit_changes = diff_mask.sum()
+                        corrections_made += debit_changes
+                        # print(f"Debits corrected: {debit_changes} rows")
+                
+                if 'Credits_Corrected' in df_with_diff.columns and 'Credits_Original' in df_with_diff.columns:
+                    mask = ~pd.isna(df_with_diff['Credits_Corrected'])
+                    if mask.any():
+                        original_values = df_with_diff.loc[mask, 'Credits_Original'].apply(
+                            lambda x: extract_amount(x) if isinstance(x, str) and x.strip() not in ['', 'nan', 'None'] else np.nan
+                        )
+                        corrected_values = df_with_diff.loc[mask, 'Credits_Corrected']
+                        
+                        diff_mask = ~np.isclose(original_values, corrected_values, rtol=1e-9, atol=1e-9)
+                        credit_changes = diff_mask.sum()
+                        corrections_made += credit_changes
+                        #print(f"Credits corrected: {credit_changes} rows")
+                
+                if 'Balance_Corrected' in df_with_diff.columns and 'Balance_Original' in df_with_diff.columns:
+                    mask = ~pd.isna(df_with_diff['Balance_Corrected'])
+                    if mask.any():
+                        original_values = df_with_diff.loc[mask, 'Balance_Original'].apply(
+                            lambda x: extract_amount(x) if isinstance(x, str) and x.strip() not in ['', 'nan', 'None'] else np.nan
+                        )
+                        corrected_values = df_with_diff.loc[mask, 'Balance_Corrected']
+                        
+                        diff_mask = ~np.isclose(original_values, corrected_values, rtol=1e-9, atol=1e-9)
+                        balance_changes = diff_mask.sum()
+                        corrections_made += balance_changes
+                        #print(f"Balance corrected: {balance_changes} rows")
+                
+                if adjusted_final:
+                    # print("\n BALANCES ADJUSTED: Decimal differences have been synchronized.")
+                    # print("   Updated balances saved to cleaned file.")
+                    pass
+                elif all_correct_final:
+                    # print("\n VERIFICATION PASSED: All differences are 0")
+                    # print("   The corrected values are mathematically consistent.")
+                    pass
+                else:
+                    # print("\n  VERIFICATION WARNING: Some differences found")
+                    # if debug:
+                    #     print("   Check the debug file for details.")
+                    # else:
+                    #     print("   Run with debug=True to see details.")
+                    pass
+                
+                if corrections_made > 0:
+                    # print(f"\n TOTAL CORRECTIONS: {corrections_made} values were corrected for OCR errors")
+                    pass
+            else:
+                print("ERROR: Cleaned data is empty.")
+
+        else:
+            print("ERROR: No header detected in the CSV file.")
+
+    except Exception as e:
+        print(f"\n!!! CRITICAL ERROR: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\kayro\Desktop\3996.csv"
-	output_csv = r"C:\Users\kayro\Desktop\3996.csv"
-	clean_main(input_csv, output_csv, logging=False, debug=True)
+    input_csv = r"C:\Users\kayro\Downloads\failed_icici_p1\failed_sample\ksf_bl_83333__623701514837__wDPnf3E1Y2__6237015148372024020120240425250420241255212404291355232_ICICI_Bank.csv"
+    output_csv = r"C:\Users\kayro\Downloads\failed_icici_p1\failed_sample\rksf_bl_83333__623701514837__wDPnf3E1Y2__6237015148372024020120240425250420241255212404291355232_ICICI_Bank.csv"
+    clean_main(input_csv, output_csv, logging=False, debug=True)
