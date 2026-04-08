@@ -145,27 +145,87 @@ def clean_by_majority_structure(df, max_gap_cap=4):
         
         return df , csv_outputs
 
+# def drop_last_rows(df):
+#     # Step 1: Read CSV
+#     # df = pd.read_csv(file_path, header=None, dtype=str)
+
+#     # Convert "" to NaN
+#     df.replace('""', np.nan, inplace=True)
+
+#     # Drop rows where all values are NaN
+#     df.dropna(how='all', inplace=True)
+
+#     # Debug file (optional)
+#     # df.to_csv("after_dropna.csv", index=False)
+
+#     # Reset index
+#     df.reset_index(drop=True, inplace=True)
+
+#     # Convert dataframe to list of rows
+#     rows = df.values.tolist()
+
+#     index_list = []
+
+#     # Inline function logic for shape
+#     def get_shape(row):
+#         last_valid_idx = -1
+#         for idx in range(len(row) - 1, -1, -1):
+#             if pd.notna(row[idx]):
+#                 last_valid_idx = idx
+#                 break
+#         return last_valid_idx + 1 if last_valid_idx != -1 else 0
+
+#     # Step 2: Initialize pointers
+#     i = 0
+#     base_shape = get_shape(rows[i])
+
+#     k = 1
+
+#     while k < len(rows):
+#         current_shape = get_shape(rows[k])
+
+#         if current_shape == base_shape:
+#             k += 1
+#             continue
+#         else:
+#             j = k  # as per your updated logic
+
+#             # Check next 4 rows
+#             match_found = False
+#             for future in range(k + 1, min(k + 5, len(rows))):
+#                 future_shape = get_shape(rows[future])
+
+#                 if future_shape == base_shape:
+#                     match_found = True
+#                     break
+
+#             if not match_found:
+#                 index_list.append(j)
+
+#             k += 1
+
+#     # Drop detected rows
+#     cleaned_df = df.drop(index=index_list).reset_index(drop=True)
+
+#     return cleaned_df, index_list
 def drop_last_rows(df):
     # Step 1: Read CSV
     # df = pd.read_csv(file_path, header=None, dtype=str)
-
+ 
     # Convert "" to NaN
     df.replace('""', np.nan, inplace=True)
-
+ 
     # Drop rows where all values are NaN
     df.dropna(how='all', inplace=True)
-
-    # Debug file (optional)
-    # df.to_csv("after_dropna.csv", index=False)
-
+ 
     # Reset index
     df.reset_index(drop=True, inplace=True)
-
+ 
     # Convert dataframe to list of rows
     rows = df.values.tolist()
-
+ 
     index_list = []
-
+ 
     # Inline function logic for shape
     def get_shape(row):
         last_valid_idx = -1
@@ -174,39 +234,64 @@ def drop_last_rows(df):
                 last_valid_idx = idx
                 break
         return last_valid_idx + 1 if last_valid_idx != -1 else 0
-
+ 
     # Step 2: Initialize pointers
-    i = 0
-    base_shape = get_shape(rows[i])
-
-    k = 1
-
+ 
+    row = len(df) // 4
+    row_prev = row - 1
+    row_for = row + 1
+    base_shape_row = get_shape(row)
+ 
+    if row-1 == 0:
+        base_shape_row_prev = get_shape(row-1)
+    else:
+        base_shape_row_prev = 0
+ 
+    if row+1 < len(df):
+        base_shape_row_for = get_shape(row+1)
+    else:      
+        base_shape_row_for = 0
+ 
+    candidates = {
+    row: base_shape_row,
+    row_prev: base_shape_row_prev,
+    row_for: base_shape_row_for
+    }
+ 
+    # index with max value
+    max_index = max(candidates, key=candidates.get)
+ 
+    # max value (optional)
+    base_shape = candidates[max_index]
+   
+    k = max_index+1
+ 
     while k < len(rows):
         current_shape = get_shape(rows[k])
-
+ 
         if current_shape == base_shape:
             k += 1
             continue
         else:
             j = k  # as per your updated logic
-
+ 
             # Check next 4 rows
             match_found = False
             for future in range(k + 1, min(k + 5, len(rows))):
                 future_shape = get_shape(rows[future])
-
+ 
                 if future_shape == base_shape:
                     match_found = True
                     break
-
+ 
             if not match_found:
                 index_list.append(j)
-
+ 
             k += 1
-
+ 
     # Drop detected rows
     cleaned_df = df.drop(index=index_list).reset_index(drop=True)
-
+    # cleaned_df.to_csv("debug_after_drop_last_rows.csv", index=False)  # Debug output
     return cleaned_df, index_list
 
 # HEADER ROW DETECTOR
