@@ -1,5 +1,5 @@
 #Code Author: Kayroze Shroff
-#Updated Date: 13-Jan-2026
+#Updated Date: 9-Apr-2026
 
 import re
 import gc
@@ -94,6 +94,11 @@ def parse_custom_date(x) -> Optional[str]:
             return None
         
         original_x = str(x).strip()
+
+        date_match = re.search(r'(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{4})', original_x)
+        if date_match:
+            original_x = date_match.group(1)
+            
         # NEW: Remove trailing time components (e.g., " 00:00", " 00:00:00", " 00:00 AM/PM")
         original_x = re.sub(r'\s+\d{1,2}:\d{2}(:\d{2})?(\s*[AP]M)?$', '', original_x, flags=re.IGNORECASE) 
         # Check for invalid day "00" or "00:" patterns - return None immediately
@@ -712,389 +717,409 @@ def date_correction(df: pd.DataFrame) -> Tuple[pd.DataFrame, str]:
         
         # Step 3: Iterative chronological ordering fix
         # We'll iterate multiple times to ensure all dates are in order
-        max_iterations = 5
-        for iteration in range(max_iterations):
-            made_correction = False
-            corrected_dates = df['XN Date'].tolist()
+        # max_iterations = 5
+        # for iteration in range(max_iterations):
+        #     made_correction = False
+        #     corrected_dates = df['XN Date'].tolist()
             
-            for idx in range(len(df)):
-                if is_empty_row(df.iloc[idx]):
-                    continue
+        #     for idx in range(len(df)):
+        #         if is_empty_row(df.iloc[idx]):
+        #             continue
                 
-                current_date = corrected_dates[idx]
+        #         current_date = corrected_dates[idx]
                 
-                # Skip if empty
-                if not current_date:
-                    continue
+        #         # Skip if empty
+        #         if not current_date:
+        #             continue
                 
-                # Get previous valid date
-                prev_date = None
-                prev_idx = -1
-                for i in range(idx-1, -1, -1):
-                    if is_valid_date(corrected_dates[i]):
-                        prev_date = corrected_dates[i]
-                        prev_idx = i
-                        break
+        #         # Get previous valid date
+        #         prev_date = None
+        #         prev_idx = -1
+        #         for i in range(idx-1, -1, -1):
+        #             if is_valid_date(corrected_dates[i]):
+        #                 prev_date = corrected_dates[i]
+        #                 prev_idx = i
+        #                 break
                 
-                # Get next valid date
-                next_date = None
-                next_idx = -1
-                for i in range(idx+1, len(corrected_dates)):
-                    if is_valid_date(corrected_dates[i]):
-                        next_date = corrected_dates[i]
-                        next_idx = i
-                        break
+        #         # Get next valid date
+        #         next_date = None
+        #         next_idx = -1
+        #         for i in range(idx+1, len(corrected_dates)):
+        #             if is_valid_date(corrected_dates[i]):
+        #                 next_date = corrected_dates[i]
+        #                 next_idx = i
+        #                 break
                 
-                # Check if current date is in chronological order
-                if is_valid_date(current_date):
-                    if not is_date_in_order(current_date, prev_date, next_date, date_order):
-                        # Date is valid but out of order - need to correct
-                        made_correction = True
+        #         # Check if current date is in chronological order
+        #         if is_valid_date(current_date):
+        #             if not is_date_in_order(current_date, prev_date, next_date, date_order):
+        #                 # Date is valid but out of order - need to correct
+        #                 made_correction = True
                         
-                        # STRICT RULE: If above and below dates are the same, use that date
-                        if (prev_date and next_date and 
-                            is_valid_date(prev_date) and is_valid_date(next_date) and
-                            prev_date == next_date):
-                            candidate = prev_date
-                        else:
-                            # Original logic for different above/below dates
-                            candidate = None
+        #                 # STRICT RULE: If above and below dates are the same, use that date
+        #                 if (prev_date and next_date and 
+        #                     is_valid_date(prev_date) and is_valid_date(next_date) and
+        #                     prev_date == next_date):
+        #                     candidate = prev_date
+        #                 else:
+        #                     # Original logic for different above/below dates
+        #                     candidate = None
                             
-                            # Strategy 1: Try ValueDate first
-                            if value_date_col and value_date_col in df.columns:
-                                value_date_str = str(df.at[idx, value_date_col]).strip() if pd.notna(df.at[idx, value_date_col]) else ""
-                                if value_date_str:
-                                    parsed_value = parse_custom_date(value_date_str)
-                                    if parsed_value and is_valid_date(parsed_value):
-                                        if is_date_in_order(parsed_value, prev_date, next_date, date_order):
-                                            candidate = parsed_value
+        #                     # Strategy 1: Try ValueDate first
+        #                     if value_date_col and value_date_col in df.columns:
+        #                         value_date_str = str(df.at[idx, value_date_col]).strip() if pd.notna(df.at[idx, value_date_col]) else ""
+        #                         if value_date_str:
+        #                             parsed_value = parse_custom_date(value_date_str)
+        #                             if parsed_value and is_valid_date(parsed_value):
+        #                                 if is_date_in_order(parsed_value, prev_date, next_date, date_order):
+        #                                     candidate = parsed_value
                             
-                            # Strategy 2: Predict from context
-                            if not candidate:
-                                if date_order == 'ascending':
-                                    if prev_date and is_valid_date(prev_date):
-                                        try:
-                                            p_day, p_month, p_year = map(int, prev_date.split('/'))
-                                            prev_dt = datetime(p_year, p_month, p_day)
+        #                     # Strategy 2: Predict from context
+        #                     if not candidate:
+        #                         if date_order == 'ascending':
+        #                             if prev_date and is_valid_date(prev_date):
+        #                                 try:
+        #                                     p_day, p_month, p_year = map(int, prev_date.split('/'))
+        #                                     prev_dt = datetime(p_year, p_month, p_day)
                                             
-                                            if next_date and is_valid_date(next_date):
-                                                n_day, n_month, n_year = map(int, next_date.split('/'))
-                                                next_dt = datetime(n_year, n_month, n_day)
+        #                                     if next_date and is_valid_date(next_date):
+        #                                         n_day, n_month, n_year = map(int, next_date.split('/'))
+        #                                         next_dt = datetime(n_year, n_month, n_day)
                                                 
-                                                # Current date should be between prev and next
-                                                if prev_dt < next_dt:
-                                                    # Try to keep date close to original if possible
-                                                    c_day, c_month, c_year = map(int, current_date.split('/'))
-                                                    current_dt = datetime(c_year, c_month, c_day)
+        #                                         # Current date should be between prev and next
+        #                                         if prev_dt < next_dt:
+        #                                             # Try to keep date close to original if possible
+        #                                             c_day, c_month, c_year = map(int, current_date.split('/'))
+        #                                             current_dt = datetime(c_year, c_month, c_day)
                                                     
-                                                    # If current date is before previous date, set to day after previous
-                                                    if current_dt < prev_dt:
-                                                        candidate_dt = prev_dt + timedelta(days=1)
-                                                        candidate = candidate_dt.strftime('%d/%m/%Y')
-                                                    # If current date is after next date, set to day before next
-                                                    elif current_dt > next_dt:
-                                                        candidate_dt = next_dt - timedelta(days=1)
-                                                        candidate = candidate_dt.strftime('%d/%m/%Y')
-                                                    # If current date is same as a previous date (duplicate), increment by 1 day
-                                                    elif current_dt == prev_dt:
-                                                        # Only use +1 if above and below are NOT the same
-                                                        if prev_date != next_date:
-                                                            candidate_dt = prev_dt + timedelta(days=1)
-                                                            candidate = candidate_dt.strftime('%d/%m/%Y')
-                                                        else:
-                                                            candidate = prev_date
-                                                    else:
-                                                        # Current date is between, but might be out of sequence with other dates
-                                                        # Use mid-point approach
-                                                        total_days = (next_dt - prev_dt).days
-                                                        if 0 < total_days <= 100:
-                                                            days_to_add = total_days // 2
-                                                            candidate_dt = prev_dt + timedelta(days=days_to_add)
-                                                            candidate = candidate_dt.strftime('%d/%m/%Y')
-                                                        else:
-                                                            # Only use +1 if above and below are NOT the same
-                                                            if prev_date != next_date:
-                                                                candidate_dt = prev_dt + timedelta(days=1)
-                                                                candidate = candidate_dt.strftime('%d/%m/%Y')
-                                                            else:
-                                                                candidate = prev_date
-                                                else:
-                                                    # prev_dt >= next_dt, which shouldn't happen if dates are valid
-                                                    # Only use +1 if above and below are NOT the same
-                                                    if prev_date != next_date:
-                                                        candidate_dt = prev_dt + timedelta(days=1)
-                                                        candidate = candidate_dt.strftime('%d/%m/%Y')
-                                                    else:
-                                                        candidate = prev_date
-                                            else:
-                                                # Only previous date available
-                                                # Only use +1 if we don't have same above/below constraint
-                                                candidate_dt = prev_dt + timedelta(days=1)
-                                                candidate = candidate_dt.strftime('%d/%m/%Y')
-                                        except:
-                                            # If any parsing error, use default logic
-                                            pass
+        #                                             # If current date is before previous date, set to day after previous
+        #                                             if current_dt < prev_dt:
+        #                                                 candidate_dt = prev_dt + timedelta(days=1)
+        #                                                 candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                             # If current date is after next date, set to day before next
+        #                                             elif current_dt > next_dt:
+        #                                                 candidate_dt = next_dt - timedelta(days=1)
+        #                                                 candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                             # If current date is same as a previous date (duplicate), increment by 1 day
+        #                                             elif current_dt == prev_dt:
+        #                                                 # Only use +1 if above and below are NOT the same
+        #                                                 if prev_date != next_date:
+        #                                                     candidate_dt = prev_dt + timedelta(days=1)
+        #                                                     candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                                 else:
+        #                                                     candidate = prev_date
+        #                                             else:
+        #                                                 # Current date is between, but might be out of sequence with other dates
+        #                                                 # Use mid-point approach
+        #                                                 total_days = (next_dt - prev_dt).days
+        #                                                 if 0 < total_days <= 100:
+        #                                                     days_to_add = total_days // 2
+        #                                                     candidate_dt = prev_dt + timedelta(days=days_to_add)
+        #                                                     candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                                 else:
+        #                                                     # Only use +1 if above and below are NOT the same
+        #                                                     if prev_date != next_date:
+        #                                                         candidate_dt = prev_dt + timedelta(days=1)
+        #                                                         candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                                     else:
+        #                                                         candidate = prev_date
+        #                                         else:
+        #                                             # prev_dt >= next_dt, which shouldn't happen if dates are valid
+        #                                             # Only use +1 if above and below are NOT the same
+        #                                             if prev_date != next_date:
+        #                                                 candidate_dt = prev_dt + timedelta(days=1)
+        #                                                 candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                             else:
+        #                                                 candidate = prev_date
+        #                                     else:
+        #                                         # Only previous date available
+        #                                         # Only use +1 if we don't have same above/below constraint
+        #                                         candidate_dt = prev_dt + timedelta(days=1)
+        #                                         candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                 except:
+        #                                     # If any parsing error, use default logic
+        #                                     pass
                                     
-                                    elif next_date and is_valid_date(next_date):
-                                        # Only next date available
-                                        try:
-                                            n_day, n_month, n_year = map(int, next_date.split('/'))
-                                            next_dt = datetime(n_year, n_month, n_day)
-                                            candidate_dt = next_dt - timedelta(days=1)
-                                            candidate = candidate_dt.strftime('%d/%m/%Y')
-                                        except:
-                                            pass
+        #                             elif next_date and is_valid_date(next_date):
+        #                                 # Only next date available
+        #                                 try:
+        #                                     n_day, n_month, n_year = map(int, next_date.split('/'))
+        #                                     next_dt = datetime(n_year, n_month, n_day)
+        #                                     candidate_dt = next_dt - timedelta(days=1)
+        #                                     candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                 except:
+        #                                     pass
                                 
-                                else:  # descending order
-                                    if next_date and is_valid_date(next_date):
-                                        try:
-                                            n_day, n_month, n_year = map(int, next_date.split('/'))
-                                            next_dt = datetime(n_year, n_month, n_day)
+        #                         else:  # descending order
+        #                             if next_date and is_valid_date(next_date):
+        #                                 try:
+        #                                     n_day, n_month, n_year = map(int, next_date.split('/'))
+        #                                     next_dt = datetime(n_year, n_month, n_day)
                                             
-                                            if prev_date and is_valid_date(prev_date):
-                                                p_day, p_month, p_year = map(int, prev_date.split('/'))
-                                                prev_dt = datetime(p_year, p_month, p_day)
+        #                                     if prev_date and is_valid_date(prev_date):
+        #                                         p_day, p_month, p_year = map(int, prev_date.split('/'))
+        #                                         prev_dt = datetime(p_year, p_month, p_day)
                                                 
-                                                if next_dt < prev_dt:
-                                                    # Try to keep date close to original if possible
-                                                    c_day, c_month, c_year = map(int, current_date.split('/'))
-                                                    current_dt = datetime(c_year, c_month, c_day)
+        #                                         if next_dt < prev_dt:
+        #                                             # Try to keep date close to original if possible
+        #                                             c_day, c_month, c_year = map(int, current_date.split('/'))
+        #                                             current_dt = datetime(c_year, c_month, c_day)
                                                     
-                                                    # If current date is after previous date (should be before for descending)
-                                                    if current_dt > prev_dt:
-                                                        candidate_dt = prev_dt - timedelta(days=1)
-                                                        candidate = candidate_dt.strftime('%d/%m/%Y')
-                                                    # If current date is before next date (should be after for descending)
-                                                    elif current_dt < next_dt:
-                                                        candidate_dt = next_dt + timedelta(days=1)
-                                                        candidate = candidate_dt.strftime('%d/%m/%Y')
-                                                    # If duplicate
-                                                    elif current_dt == prev_dt:
-                                                        # Only use -1 if above and below are NOT the same
-                                                        if prev_date != next_date:
-                                                            candidate_dt = prev_dt - timedelta(days=1)
-                                                            candidate = candidate_dt.strftime('%d/%m/%Y')
-                                                        else:
-                                                            candidate = prev_date
-                                                    else:
-                                                        total_days = (prev_dt - next_dt).days
-                                                        if 0 < total_days <= 100:
-                                                            days_to_add = total_days // 2
-                                                            candidate_dt = next_dt + timedelta(days=days_to_add)
-                                                            candidate = candidate_dt.strftime('%d/%m/%Y')
-                                                        else:
-                                                            # Only use +1 if above and below are NOT the same
-                                                            if prev_date != next_date:
-                                                                candidate_dt = next_dt + timedelta(days=1)
-                                                                candidate = candidate_dt.strftime('%d/%m/%Y')
-                                                            else:
-                                                                candidate = next_date
-                                                else:
-                                                    # Only use +1 if above and below are NOT the same
-                                                    if prev_date != next_date:
-                                                        candidate_dt = next_dt + timedelta(days=1)
-                                                        candidate = candidate_dt.strftime('%d/%m/%Y')
-                                                    else:
-                                                        candidate = next_date
-                                            else:
-                                                # Only next date available
-                                                candidate_dt = next_dt + timedelta(days=1)
-                                                candidate = candidate_dt.strftime('%d/%m/%Y')
-                                        except:
-                                            pass
+        #                                             # If current date is after previous date (should be before for descending)
+        #                                             if current_dt > prev_dt:
+        #                                                 candidate_dt = prev_dt - timedelta(days=1)
+        #                                                 candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                             # If current date is before next date (should be after for descending)
+        #                                             elif current_dt < next_dt:
+        #                                                 candidate_dt = next_dt + timedelta(days=1)
+        #                                                 candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                             # If duplicate
+        #                                             elif current_dt == prev_dt:
+        #                                                 # Only use -1 if above and below are NOT the same
+        #                                                 if prev_date != next_date:
+        #                                                     candidate_dt = prev_dt - timedelta(days=1)
+        #                                                     candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                                 else:
+        #                                                     candidate = prev_date
+        #                                             else:
+        #                                                 total_days = (prev_dt - next_dt).days
+        #                                                 if 0 < total_days <= 100:
+        #                                                     days_to_add = total_days // 2
+        #                                                     candidate_dt = next_dt + timedelta(days=days_to_add)
+        #                                                     candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                                 else:
+        #                                                     # Only use +1 if above and below are NOT the same
+        #                                                     if prev_date != next_date:
+        #                                                         candidate_dt = next_dt + timedelta(days=1)
+        #                                                         candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                                     else:
+        #                                                         candidate = next_date
+        #                                         else:
+        #                                             # Only use +1 if above and below are NOT the same
+        #                                             if prev_date != next_date:
+        #                                                 candidate_dt = next_dt + timedelta(days=1)
+        #                                                 candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                             else:
+        #                                                 candidate = next_date
+        #                                     else:
+        #                                         # Only next date available
+        #                                         candidate_dt = next_dt + timedelta(days=1)
+        #                                         candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                 except:
+        #                                     pass
                                     
-                                    elif prev_date and is_valid_date(prev_date):
-                                        try:
-                                            p_day, p_month, p_year = map(int, prev_date.split('/'))
-                                            prev_dt = datetime(p_year, p_month, p_day)
-                                            candidate_dt = prev_dt - timedelta(days=1)
-                                            candidate = candidate_dt.strftime('%d/%m/%Y')
-                                        except:
-                                            pass
+        #                             elif prev_date and is_valid_date(prev_date):
+        #                                 try:
+        #                                     p_day, p_month, p_year = map(int, prev_date.split('/'))
+        #                                     prev_dt = datetime(p_year, p_month, p_day)
+        #                                     candidate_dt = prev_dt - timedelta(days=1)
+        #                                     candidate = candidate_dt.strftime('%d/%m/%Y')
+        #                                 except:
+        #                                     pass
                         
-                        # Apply candidate if valid
-                        if candidate and is_valid_date(candidate):
-                            if is_date_in_order(candidate, prev_date, next_date, date_order):
-                                corrected_dates[idx] = candidate
+        #                 # Apply candidate if valid
+        #                 if candidate and is_valid_date(candidate):
+        #                     if is_date_in_order(candidate, prev_date, next_date, date_order):
+        #                         corrected_dates[idx] = candidate
             
-            # Update df with corrected dates
-            df['XN Date'] = corrected_dates
+        #     # Update df with corrected dates
+        #     df['XN Date'] = corrected_dates
             
-            # If no corrections were made, break the loop
-            if not made_correction:
-                break
+        #     # If no corrections were made, break the loop
+        #     if not made_correction:
+        #         break
         
-        # Step 4: Handle consecutive missing dates with backtracking - WITH SAME LOGIC
-        remaining_invalid = []
-        for idx in range(len(df)):
-            if is_empty_row(df.iloc[idx]):
-                continue
+        # # Step 4: Handle consecutive missing dates with backtracking - WITH SAME LOGIC
+        # remaining_invalid = []
+        # for idx in range(len(df)):
+        #     if is_empty_row(df.iloc[idx]):
+        #         continue
             
-            if not is_valid_date(corrected_dates[idx]):
-                remaining_invalid.append(idx)
+        #     if not is_valid_date(corrected_dates[idx]):
+        #         remaining_invalid.append(idx)
         
-        if remaining_invalid:
-            backtrack_groups = []
-            current_group = []
+        # if remaining_invalid:
+        #     backtrack_groups = []
+        #     current_group = []
             
-            for idx in remaining_invalid:
-                if not current_group or idx == current_group[-1] + 1:
-                    current_group.append(idx)
-                else:
-                    if current_group:
-                        backtrack_groups.append(current_group.copy())
-                    current_group = [idx]
+        #     for idx in remaining_invalid:
+        #         if not current_group or idx == current_group[-1] + 1:
+        #             current_group.append(idx)
+        #         else:
+        #             if current_group:
+        #                 backtrack_groups.append(current_group.copy())
+        #             current_group = [idx]
             
-            if current_group:
-                backtrack_groups.append(current_group)
+        #     if current_group:
+        #         backtrack_groups.append(current_group)
             
-            for group in backtrack_groups:
-                # Try to get dates from ValueDate column first WITH SAME LOGIC
-                date_list = []
-                for idx in group:
-                    if value_date_col and value_date_col in df.columns:
-                        value_date_str = str(df.at[idx, value_date_col]).strip() if pd.notna(df.at[idx, value_date_col]) else ""
-                        if value_date_str:
-                            parsed_value = parse_custom_date(value_date_str)
-                            if parsed_value and is_valid_date(parsed_value):
-                                # Get context for this date
-                                prev_date = None
-                                for i in range(idx-1, -1, -1):
-                                    if is_valid_date(corrected_dates[i]):
-                                        prev_date = corrected_dates[i]
-                                        break
+        #     for group in backtrack_groups:
+        #         # Try to get dates from ValueDate column first WITH SAME LOGIC
+        #         date_list = []
+        #         for idx in group:
+        #             if value_date_col and value_date_col in df.columns:
+        #                 value_date_str = str(df.at[idx, value_date_col]).strip() if pd.notna(df.at[idx, value_date_col]) else ""
+        #                 if value_date_str:
+        #                     parsed_value = parse_custom_date(value_date_str)
+        #                     if parsed_value and is_valid_date(parsed_value):
+        #                         # Get context for this date
+        #                         prev_date = None
+        #                         for i in range(idx-1, -1, -1):
+        #                             if is_valid_date(corrected_dates[i]):
+        #                                 prev_date = corrected_dates[i]
+        #                                 break
                                 
-                                next_date = None
-                                for i in range(idx+1, len(corrected_dates)):
-                                    if is_valid_date(corrected_dates[i]):
-                                        next_date = corrected_dates[i]
-                                        break
+        #                         next_date = None
+        #                         for i in range(idx+1, len(corrected_dates)):
+        #                             if is_valid_date(corrected_dates[i]):
+        #                                 next_date = corrected_dates[i]
+        #                                 break
                                 
-                                # Apply SAME LOGIC: if above and below are same, use that date
-                                if (prev_date and next_date and 
-                                    is_valid_date(prev_date) and is_valid_date(next_date) and
-                                    prev_date == next_date):
-                                    date_list.append((idx, prev_date))
-                                elif is_date_in_order(parsed_value, prev_date, next_date, date_order):
-                                    date_list.append((idx, parsed_value))
+        #                         # Apply SAME LOGIC: if above and below are same, use that date
+        #                         if (prev_date and next_date and 
+        #                             is_valid_date(prev_date) and is_valid_date(next_date) and
+        #                             prev_date == next_date):
+        #                             date_list.append((idx, prev_date))
+        #                         elif is_date_in_order(parsed_value, prev_date, next_date, date_order):
+        #                             date_list.append((idx, parsed_value))
                 
-                # If we found some ValueDates, apply them
-                for row_idx, new_date in date_list:
-                    corrected_dates[row_idx] = new_date
+        #         # If we found some ValueDates, apply them
+        #         for row_idx, new_date in date_list:
+        #             corrected_dates[row_idx] = new_date
                 
-                # Update group with remaining indices
-                remaining_in_group = [idx for idx in group if not is_valid_date(corrected_dates[idx])]
+        #         # Update group with remaining indices
+        #         remaining_in_group = [idx for idx in group if not is_valid_date(corrected_dates[idx])]
                 
-                if remaining_in_group:
-                    # APPLY SAME LOGIC BEFORE BACKTRACKING: Check for same above/below dates
-                    for idx in remaining_in_group[:]:  # Create a copy for safe removal
-                        # Get above and below dates
-                        prev_date = None
-                        for i in range(idx-1, -1, -1):
-                            if is_valid_date(corrected_dates[i]):
-                                prev_date = corrected_dates[i]
-                                break
+        #         if remaining_in_group:
+        #             # APPLY SAME LOGIC BEFORE BACKTRACKING: Check for same above/below dates
+        #             for idx in remaining_in_group[:]:  # Create a copy for safe removal
+        #                 # Get above and below dates
+        #                 prev_date = None
+        #                 for i in range(idx-1, -1, -1):
+        #                     if is_valid_date(corrected_dates[i]):
+        #                         prev_date = corrected_dates[i]
+        #                         break
                         
-                        next_date = None
-                        for i in range(idx+1, len(corrected_dates)):
-                            if is_valid_date(corrected_dates[i]):
-                                next_date = corrected_dates[i]
-                                break
+        #                 next_date = None
+        #                 for i in range(idx+1, len(corrected_dates)):
+        #                     if is_valid_date(corrected_dates[i]):
+        #                         next_date = corrected_dates[i]
+        #                         break
                         
-                        # SAME LOGIC: If above and below are same, use that date
-                        if (prev_date and next_date and 
-                            is_valid_date(prev_date) and is_valid_date(next_date) and
-                            prev_date == next_date):
-                            corrected_dates[idx] = prev_date
-                            remaining_in_group.remove(idx)
+        #                 # SAME LOGIC: If above and below are same, use that date
+        #                 if (prev_date and next_date and 
+        #                     is_valid_date(prev_date) and is_valid_date(next_date) and
+        #                     prev_date == next_date):
+        #                     corrected_dates[idx] = prev_date
+        #                     remaining_in_group.remove(idx)
                     
-                    # Use backtracking for remaining indices
-                    if remaining_in_group:
-                        backtrack_dates = create_date_list_through_backtracking(df, remaining_in_group, date_order, value_date_col)
+        #             # Use backtracking for remaining indices
+        #             if remaining_in_group:
+        #                 backtrack_dates = create_date_list_through_backtracking(df, remaining_in_group, date_order, value_date_col)
                         
-                        # APPLY SAME LOGIC TO BACKTRACKING RESULTS
-                        for row_idx, new_date in backtrack_dates:
-                            if is_valid_date(new_date):
-                                # Get context for this date from corrected_dates
-                                prev_date = None
-                                for i in range(row_idx-1, -1, -1):
-                                    if is_valid_date(corrected_dates[i]):
-                                        prev_date = corrected_dates[i]
-                                        break
+        #                 # APPLY SAME LOGIC TO BACKTRACKING RESULTS
+        #                 for row_idx, new_date in backtrack_dates:
+        #                     if is_valid_date(new_date):
+        #                         # Get context for this date from corrected_dates
+        #                         prev_date = None
+        #                         for i in range(row_idx-1, -1, -1):
+        #                             if is_valid_date(corrected_dates[i]):
+        #                                 prev_date = corrected_dates[i]
+        #                                 break
                                 
-                                next_date = None
-                                for i in range(row_idx+1, len(corrected_dates)):
-                                    if is_valid_date(corrected_dates[i]):
-                                        next_date = corrected_dates[i]
-                                        break
+        #                         next_date = None
+        #                         for i in range(row_idx+1, len(corrected_dates)):
+        #                             if is_valid_date(corrected_dates[i]):
+        #                                 next_date = corrected_dates[i]
+        #                                 break
                                 
-                                # SAME LOGIC: If above and below are same, use that date
-                                if (prev_date and next_date and 
-                                    is_valid_date(prev_date) and is_valid_date(next_date) and
-                                    prev_date == next_date):
-                                    corrected_dates[row_idx] = prev_date
-                                else:
-                                    corrected_dates[row_idx] = new_date
+        #                         # SAME LOGIC: If above and below are same, use that date
+        #                         if (prev_date and next_date and 
+        #                             is_valid_date(prev_date) and is_valid_date(next_date) and
+        #                             prev_date == next_date):
+        #                             corrected_dates[row_idx] = prev_date
+        #                         else:
+        #                             corrected_dates[row_idx] = new_date
         
-        df['XN Date'] = corrected_dates
+        # df['XN Date'] = corrected_dates
         
-        # Final verification pass
+        # # Final verification pass
+        # corrected_dates = df['XN Date'].tolist()
+        # for idx in range(len(df)):
+        #     if is_empty_row(df.iloc[idx]):
+        #         continue
+            
+        #     current_date = corrected_dates[idx]
+        #     if not current_date or not is_valid_date(current_date):
+        #         continue
+            
+        #     # Get previous valid date
+        #     prev_date = None
+        #     for i in range(idx-1, -1, -1):
+        #         if is_valid_date(corrected_dates[i]):
+        #             prev_date = corrected_dates[i]
+        #             break
+            
+        #     # Get next valid date
+        #     next_date = None
+        #     for i in range(idx+1, len(corrected_dates)):
+        #         if is_valid_date(corrected_dates[i]):
+        #             next_date = corrected_dates[i]
+        #             break
+            
+        #     # Final check - if still out of order, use appropriate logic WITH SAME RULE
+        #     if not is_date_in_order(current_date, prev_date, next_date, date_order):
+        #         # STRICT RULE: If above and below dates are the same, use that date
+        #         if (prev_date and next_date and 
+        #             is_valid_date(prev_date) and is_valid_date(next_date) and
+        #             prev_date == next_date):
+        #             corrected_dates[idx] = prev_date
+        #         else:
+        #             # Use simple increment/decrement only when above and below are NOT the same
+        #             if date_order == 'ascending':
+        #                 if prev_date and is_valid_date(prev_date):
+        #                     try:
+        #                         p_day, p_month, p_year = map(int, prev_date.split('/'))
+        #                         prev_dt = datetime(p_year, p_month, p_day)
+        #                         candidate_dt = prev_dt + timedelta(days=1)
+        #                         corrected_dates[idx] = candidate_dt.strftime('%d/%m/%Y')
+        #                     except:
+        #                         pass
+        #             else:
+        #                 if next_date and is_valid_date(next_date):
+        #                     try:
+        #                         n_day, n_month, n_year = map(int, next_date.split('/'))
+        #                         next_dt = datetime(n_year, n_month, n_day)
+        #                         candidate_dt = next_dt + timedelta(days=1)
+        #                         corrected_dates[idx] = candidate_dt.strftime('%d/%m/%Y')
+        #                     except:
+        #                         pass
+        
+        # df['XN Date'] = corrected_dates
+        
+        # # Final order verification
+        # final_order = get_date_order(df, 'XN Date')
+                
+        # NEW: Simple filling of missing/invalid dates using ValueDate only (no order checks)
         corrected_dates = df['XN Date'].tolist()
         for idx in range(len(df)):
             if is_empty_row(df.iloc[idx]):
                 continue
             
             current_date = corrected_dates[idx]
-            if not current_date or not is_valid_date(current_date):
-                continue
+            if current_date and is_valid_date(current_date):
+                continue  # already valid, keep it
             
-            # Get previous valid date
-            prev_date = None
-            for i in range(idx-1, -1, -1):
-                if is_valid_date(corrected_dates[i]):
-                    prev_date = corrected_dates[i]
-                    break
-            
-            # Get next valid date
-            next_date = None
-            for i in range(idx+1, len(corrected_dates)):
-                if is_valid_date(corrected_dates[i]):
-                    next_date = corrected_dates[i]
-                    break
-            
-            # Final check - if still out of order, use appropriate logic WITH SAME RULE
-            if not is_date_in_order(current_date, prev_date, next_date, date_order):
-                # STRICT RULE: If above and below dates are the same, use that date
-                if (prev_date and next_date and 
-                    is_valid_date(prev_date) and is_valid_date(next_date) and
-                    prev_date == next_date):
-                    corrected_dates[idx] = prev_date
-                else:
-                    # Use simple increment/decrement only when above and below are NOT the same
-                    if date_order == 'ascending':
-                        if prev_date and is_valid_date(prev_date):
-                            try:
-                                p_day, p_month, p_year = map(int, prev_date.split('/'))
-                                prev_dt = datetime(p_year, p_month, p_day)
-                                candidate_dt = prev_dt + timedelta(days=1)
-                                corrected_dates[idx] = candidate_dt.strftime('%d/%m/%Y')
-                            except:
-                                pass
-                    else:
-                        if next_date and is_valid_date(next_date):
-                            try:
-                                n_day, n_month, n_year = map(int, next_date.split('/'))
-                                next_dt = datetime(n_year, n_month, n_day)
-                                candidate_dt = next_dt + timedelta(days=1)
-                                corrected_dates[idx] = candidate_dt.strftime('%d/%m/%Y')
-                            except:
-                                pass
+            # Try ValueDate if available
+            if value_date_col and value_date_col in df.columns:
+                value_date_str = str(df.at[idx, value_date_col]).strip() if pd.notna(df.at[idx, value_date_col]) else ""
+                if value_date_str:
+                    parsed_value = parse_custom_date(value_date_str)
+                    if parsed_value and is_valid_date(parsed_value):
+                        corrected_dates[idx] = parsed_value
         
         df['XN Date'] = corrected_dates
-        
-        # Final order verification
-        final_order = get_date_order(df, 'XN Date')
-        
+        final_order = date_order   # still needed for rotation later
         gc.collect()
         return df, final_order
         
@@ -1342,7 +1367,7 @@ def process_all_dates(df: pd.DataFrame, file_path=None, logging=True):
         df, date_order = rotate_if_descending(df, date_order)
         
         # Step 4: Fix chronological year issues
-        df, corrections_made = fix_chronological_year_issues(df)
+        # df, corrections_made = fix_chronological_year_issues(df)
         
         # Remove ValueDate column if it exists (after all processing is done)
         value_date_col = None
@@ -1370,3 +1395,22 @@ def process_all_dates(df: pd.DataFrame, file_path=None, logging=True):
         
     except Exception as e:
         return df
+
+# ============================================================================
+# TO RESTORE ORIGINAL CHRONOLOGICAL ORDER LOGIC (UNCOMMENT THE FOLLOWING):
+# ============================================================================
+# 1. In date_correction() function:
+#    - Uncomment the entire block from "# Step 3: Iterative chronological ordering fix"
+#      down to the line before "# NEW: Simple filling of missing/invalid dates..."
+#    - Also uncomment the "Final verification pass" block that was after Step 4.
+#    - Comment out or remove the "NEW: Simple filling..." block.
+#
+# 2. In process_all_dates() function:
+#    - Uncomment the line: "# df, corrections_made = fix_chronological_year_issues(df)"
+#
+# 3. Keep the call to get_date_order() and rotate_if_descending() as they are.
+#
+# NOTE: The current code uses ValueDate column to fill missing dates but does NOT
+#       enforce chronological order between rows. Uncommenting the above restores
+#       the original behaviour that adjusts dates based on neighbours and order.
+# ============================================================================
