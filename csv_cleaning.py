@@ -148,24 +148,21 @@ def clean_by_majority_structure(df, max_gap_cap=4):
 def drop_last_rows(df):
 	# Step 1: Read CSV
 	# df = pd.read_csv(file_path, header=None, dtype=str)
-
+ 
 	# Convert "" to NaN
 	df.replace('""', np.nan, inplace=True)
-
+ 
 	# Drop rows where all values are NaN
 	df.dropna(how='all', inplace=True)
-
-	# Debug file (optional)
-	# df.to_csv("after_dropna.csv", index=False)
-
+ 
 	# Reset index
 	df.reset_index(drop=True, inplace=True)
-
+ 
 	# Convert dataframe to list of rows
 	rows = df.values.tolist()
-
+ 
 	index_list = []
-
+ 
 	# Inline function logic for shape
 	def get_shape(row):
 		last_valid_idx = -1
@@ -174,36 +171,61 @@ def drop_last_rows(df):
 				last_valid_idx = idx
 				break
 		return last_valid_idx + 1 if last_valid_idx != -1 else 0
-
+ 
 	# Step 2: Initialize pointers
-	i = 0
-	base_shape = get_shape(rows[i])
-
-	k = 1
-
+ 
+	row = len(df) // 4
+	row_prev = row - 1
+	row_for = row + 1
+	base_shape_row = get_shape(row)
+ 
+	if row-1 == 0:
+		base_shape_row_prev = get_shape(row-1)
+	else:
+		base_shape_row_prev = 0
+ 
+	if row+1 < len(df):
+		base_shape_row_for = get_shape(row+1)
+	else:      
+		base_shape_row_for = 0
+ 
+	candidates = {
+	row: base_shape_row,
+	row_prev: base_shape_row_prev,
+	row_for: base_shape_row_for
+	}
+ 
+	# index with max value
+	max_index = max(candidates, key=candidates.get)
+ 
+	# max value (optional)
+	base_shape = candidates[max_index]
+   
+	k = max_index+1
+ 
 	while k < len(rows):
 		current_shape = get_shape(rows[k])
-
+ 
 		if current_shape == base_shape:
 			k += 1
 			continue
 		else:
 			j = k  # as per your updated logic
-
+ 
 			# Check next 4 rows
 			match_found = False
 			for future in range(k + 1, min(k + 5, len(rows))):
 				future_shape = get_shape(rows[future])
-
+ 
 				if future_shape == base_shape:
 					match_found = True
 					break
-
+ 
 			if not match_found:
 				index_list.append(j)
-
+ 
 			k += 1
-
+ 
 	# Drop detected rows
 	cleaned_df = df.drop(index=index_list).reset_index(drop=True)
 
@@ -681,7 +703,7 @@ def clean_debit_credit(df):
 	has_drcr = regex_drcr and type_drcr
 
 	has_mixed_amount = any(
-		re.search(r'withdrawal\s*\(?\s*dr\s*\)?\s*[/|\\-]\s*deposit\s*\(?\s*cr\s*\)?|debit.*credit|dr.*cr|amount|\ba\s*mount\b.*', col, re.IGNORECASE) for col in df.columns
+		re.search(r'withdrawal\s*\(?\s*dr\s*\)?\s*[/|\\-]\s*deposit\s*\(?\s*cr\s*\)?|debit.*credit|dr.*cr|amount|\ba\s*mount\b.*|debit\/credit\([^\)]*\)', col, re.IGNORECASE) for col in df.columns
 	)	
 	if has_drcr:
 		df = parse_debit_credit_split_safe(df)
@@ -705,7 +727,7 @@ def split_drcr_from_amount_column(df):
 
 	# Detect unified amount column
 	amount_col = next(
-		(c for c in df.columns if re.search(r'withdrawal\s*\(dr\)\s*/\s*deposit\s*\(cr\)|amount|amt|withdrawal\s*\(?\s*dr\s*[/\\]?\s*deposit\s*\(?\s*cr\s*\)?|\ba\s*mount\b.*', c, re.I)),
+		(c for c in df.columns if re.search(r'withdrawal\s*\(dr\)\s*/\s*deposit\s*\(cr\)|amount|amt|withdrawal\s*\(?\s*dr\s*[/\\]?\s*deposit\s*\(?\s*cr\s*\)?|\ba\s*mount\b.*|debit\/credit\([^\)]*\)', c, re.I)),
 		None
 	)
 	if not amount_col:
@@ -719,13 +741,26 @@ def split_drcr_from_amount_column(df):
 
 		amt = extract_amount(text)
 
-		# STRICT detection – no guessing
+		# STRICT DR/CR detection (existing logic unchanged)
 		if re.search(r'\(\s*dr\s*\)|\bdr\b|dr', text, re.I):
 			return amt, ""
 		elif re.search(r'\(\s*cr\s*\)|\bcr\b|cr', text, re.I):
 			return "", amt
+
+		# NEW FALLBACK LOGIC (ONLY when DR/CR not found)
 		else:
-			# neither DR nor CR → leave blank
+			try:
+				num = float(str(amt).replace(",", "")) if amt != "" else None
+			except:
+				num = None
+
+			if num is not None:
+				if num < 0:
+					return abs(num), ""   # Debit
+				elif num > 0:
+					return "", num        # Credit
+
+				# neither DR/CR nor valid number
 			return "", ""
 
 	df[['Debits', 'Credits']] = df[amount_col].apply(
@@ -1125,269 +1160,269 @@ def create_ocr_corrected_columns(df):
 
 
 def calculate_difference_and_verify(df):
-	"""
-	Calculate difference using formula:
-	BALANCE(i-1) + CREDIT(i) + DEBIT(i) - BALANCE(i)
-	and check if difference is 0 for all rows.
-	
-	If differences are only in decimals (between -0.99 and 0.99),
-	adjust ALL balances to make difference 0 for ALL rows.
-	"""
-	print(">>> Calculating differences for OCR verification...")
-	
-	# Create a copy and reset index to ensure continuous integer indices
-	df_diff = df.copy().reset_index(drop=True)
-	
-	# Debug: Print DataFrame info
-	# print(f"DataFrame shape after reset: {df_diff.shape}")
-	# print(f"Available columns: {list(df_diff.columns)}")
-	
-	# Initialize difference column
-	df_diff['Difference'] = 0.0
-	df_diff['Balance_Adjusted'] = df_diff['Balance_Corrected'].copy() if 'Balance_Corrected' in df_diff.columns else df_diff['Balance'].copy()
-	
-	# Check if we have the corrected columns
-	has_corrected_debits = 'Debits_Corrected' in df_diff.columns
-	has_corrected_credits = 'Credits_Corrected' in df_diff.columns
-	has_corrected_balance = 'Balance_Corrected' in df_diff.columns
-	
-	# print(f"Has corrected columns - Debits: {has_corrected_debits}, Credits: {has_corrected_credits}, Balance: {has_corrected_balance}")
-	
-	# Use corrected columns if available, otherwise use original
-	debit_col = 'Debits_Corrected' if has_corrected_debits else 'Debits'
-	credit_col = 'Credits_Corrected' if has_corrected_credits else 'Credits'
-	balance_col = 'Balance_Adjusted'  # Use adjusted balance column for calculation
-	
-	# Check if columns exist, if not try to find alternatives
-	if debit_col not in df_diff.columns:
-		# print(f"WARNING: {debit_col} not in DataFrame columns!")
-		# Try to find alternative debit column
-		for col in df_diff.columns:
-			if 'debit' in col.lower():
-				debit_col = col
-				# print(f"Found alternative debit column: {debit_col}")
-				break
-	
-	if credit_col not in df_diff.columns:
-		# print(f"WARNING: {credit_col} not in DataFrame columns!")
-		# Try to find alternative credit column
-		for col in df_diff.columns:
-			if 'credit' in col.lower():
-				credit_col = col
-				# print(f"Found alternative credit column: {credit_col}")
-				break
-	
-	if balance_col not in df_diff.columns:
-		# print(f"WARNING: {balance_col} not in DataFrame columns!")
-		# Try to find alternative balance column
-		for col in df_diff.columns:
-			if 'balance' in col.lower():
-				balance_col = col
-				# print(f"Found alternative balance column: {balance_col}")
-				break
-	
-	# print(f"Using columns - Debit: {debit_col}, Credit: {credit_col}, Balance: {balance_col}")
-	
-	# Check if required columns exist
-	required_cols_missing = []
-	if debit_col not in df_diff.columns:
-		required_cols_missing.append(debit_col)
-	if credit_col not in df_diff.columns:
-		required_cols_missing.append(credit_col)
-	if balance_col not in df_diff.columns:
-		required_cols_missing.append(balance_col)
-	
-	if required_cols_missing:
-		# print(f"ERROR: Missing required columns: {required_cols_missing}")
-		# print("Cannot calculate differences. Returning original DataFrame.")
-		return df_diff, False, False
-	
-	# Helper function to round to 2 decimal places
-	def round_to_2(val):
-		if pd.isna(val) or str(val).strip().lower() in ["", "nan", "none"]:
-			return 0.0
-		try: 
-			return round(float(val), 2)
-		except:
-			return 0.0
-	
-	# Round all numeric columns to 2 decimal places for consistent calculations
-	for col in [debit_col, credit_col, balance_col]:
-		if col in df_diff.columns:
-			df_diff[col] = df_diff[col].apply(round_to_2)
-	
-	# Calculate difference for each row starting from row 1
-	# print(f"DataFrame has {len(df_diff)} rows, will process rows 1 to {len(df_diff)-1}")
-	
-	# CRITICAL FIX: Use iloc instead of at to avoid index issues
-	for i in range(1, len(df_diff)):
-		try:
-			# Get previous balance (rounded) - using iloc for position-based access
-			prev_balance = 0
-			if i > 0 and balance_col in df_diff.columns:
-				prev_balance = round_to_2(df_diff.iloc[i-1][balance_col])
-			
-			# Get current values (rounded) - using iloc for position-based access
-			curr_debit = 0
-			if debit_col in df_diff.columns:
-				curr_debit = round_to_2(df_diff.iloc[i][debit_col])
-			
-			curr_credit = 0
-			if credit_col in df_diff.columns:
-				curr_credit = round_to_2(df_diff.iloc[i][credit_col])
-			
-			curr_balance = 0
-			if balance_col in df_diff.columns:
-				curr_balance = round_to_2(df_diff.iloc[i][balance_col])
-			
-			# Calculate difference using the formula: Balance(i-1) + Credit(i) + Debit(i) - Balance(i)
-			# Round to 2 decimal places to avoid floating-point errors
-			difference = round(prev_balance + curr_credit + curr_debit - curr_balance, 2)
-			
-			# Use iloc to set the value safely
-			df_diff.iloc[i, df_diff.columns.get_loc('Difference')] = difference
-			
-		except IndexError as e:
-			# print(f"IndexError at position {i}: {e}")
-			# print(f"DataFrame has {len(df_diff)} rows, trying to access row {i}")
-			break
-		except KeyError as e:
-			# print(f"KeyError at position {i}: {e}")
-			# print(f"Trying to access column that doesn't exist")
-			break
-		except Exception as e:
-			# print(f"Unexpected error at position {i}: {e}")
-			break
-	
-	# REQUIREMENT 2: Check if all differences are in the acceptable decimal range (-0.99 to 0.99)
-	differences = df_diff['Difference']
-	
-	# Check conditions for adjustment:
-	# 1. All differences must be between -0.99 and 0.99 (exclusive of -1 and 1)
-	all_differences_in_range = ((differences > -1.0) & (differences < 1.0)).all()
-	
-	if all_differences_in_range and len(df_diff) > 1:
-		# print("✓ All differences are within -0.99 to 0.99. Adjusting balances...")
-		
-		# FIXED: We need to adjust ALL balances consistently
-		# Start with first balance as reference
-		adjusted_balances = []
-		
-		# Keep the first balance as is (rounded to 2 decimal places)
-		if balance_col in df_diff.columns and not pd.isna(df_diff.iloc[0][balance_col]):
-			adjusted_balances.append(round_to_2(df_diff.iloc[0][balance_col]))
-		else:
-			adjusted_balances.append(0.0)
-		
-		# Calculate adjusted balances for all subsequent rows
-		for i in range(1, len(df_diff)):
-			# Get the adjusted previous balance
-			prev_adjusted_balance = adjusted_balances[-1]
-			
-			# Get current debit and credit (rounded)
-			curr_debit = 0
-			if debit_col in df_diff.columns:
-				curr_debit = round_to_2(df_diff.iloc[i][debit_col])
-			
-			curr_credit = 0
-			if credit_col in df_diff.columns:
-				curr_credit = round_to_2(df_diff.iloc[i][credit_col])
-			
-			# Calculate what the current balance SHOULD be based on previous adjusted balance
-			# Formula: Current Balance = Previous Balance + Credit + Debit
-			# Round to 2 decimal places to avoid floating-point errors
-			should_be_balance = round(prev_adjusted_balance + curr_credit + curr_debit, 2)
-			
-			# Store this as the adjusted balance
-			adjusted_balances.append(should_be_balance)
-			
-			# Update the Balance_Adjusted column using iloc
-			df_diff.iloc[i, df_diff.columns.get_loc('Balance_Adjusted')] = should_be_balance
-		
-		# Update the first row's Balance_Adjusted if it exists
-		if len(adjusted_balances) > 0 and balance_col in df_diff.columns:
-			df_diff.iloc[0, df_diff.columns.get_loc('Balance_Adjusted')] = adjusted_balances[0]
-		
-		# Recalculate differences after adjustment (with rounding)
-		for i in range(1, len(df_diff)):
-			# Get previous adjusted balance (rounded)
-			prev_balance = 0
-			if i > 0 and 'Balance_Adjusted' in df_diff.columns:
-				prev_balance = round_to_2(df_diff.iloc[i-1]['Balance_Adjusted'])
-			
-			# Get current values (rounded)
-			curr_debit = 0
-			if debit_col in df_diff.columns:
-				curr_debit = round_to_2(df_diff.iloc[i][debit_col])
-			
-			curr_credit = 0
-			if credit_col in df_diff.columns:
-				curr_credit = round_to_2(df_diff.iloc[i][credit_col])
-			
-			curr_balance = 0
-			if 'Balance_Adjusted' in df_diff.columns:
-				curr_balance = round_to_2(df_diff.iloc[i]['Balance_Adjusted'])
-			
-			# Recalculate difference with rounding
-			difference = round(prev_balance + curr_credit + curr_debit - curr_balance, 2)
-			df_diff.iloc[i, df_diff.columns.get_loc('Difference')] = difference
-		
-		adjusted = True
-		# print("✓ All balances have been adjusted to synchronize with transactions.")
-	
-	else:
-		adjusted = False
-		if len(df_diff) > 1:
-			# print("✗ Differences are not all within the decimal range. No adjustment made.")
-			pass
-			# Show the differences that are out of range
-			out_of_range = df_diff[~((df_diff['Difference'] > -1.0) & (df_diff['Difference'] < 1.0))]
-			if not out_of_range.empty:
-				# print(f"  Rows with differences out of range: {list(out_of_range.index)}")
-				pass
-				for idx in out_of_range.index[:3]:
-					# print(f"    Row {idx}: Difference = {df_diff.at[idx, 'Difference']}")
-					pass
-		else:
-			# print("✗ Not enough rows for adjustment.")
-			pass
-	
-	# Check if all differences are close to 0 (within tolerance)
-	tolerance = 0.001  # Allow very small floating point errors due to rounding
-	
-	# Calculate statistics
-	differences_abs = df_diff['Difference'].abs()
-	non_zero_diffs = df_diff[differences_abs > tolerance]
-	
-	if len(non_zero_diffs) == 0:
-		# print("✓ All differences are 0 - OCR values appear correct!")
-		all_correct = True
-	else:
-		# print(f"✗ Differences found - {len(non_zero_diffs)} rows have non-zero differences")
-		# print(f"  Max difference: {differences_abs.max()}")
-		# print(f"  Rows with differences: {list(non_zero_diffs.index)}")
-		pass
-		# Show some examples of problematic rows
-		for idx in non_zero_diffs.index[:5]:  # Show first 5 problematic rows
-			# print(f"\n  Row {idx}:")
-			# print(f"    Prev Balance: {round_to_2(df_diff.at[idx-1, 'Balance_Adjusted']) if idx > 0 and 'Balance_Adjusted' in df_diff.columns else 'N/A'}")
-			# print(f"    Debit: {round_to_2(df_diff.at[idx, debit_col])}")
-			# print(f"    Credit: {round_to_2(df_diff.at[idx, credit_col])}")
-			# print(f"    Current Balance: {round_to_2(df_diff.at[idx, 'Balance_Adjusted']) if 'Balance_Adjusted' in df_diff.columns else 'N/A'}")
-			# print(f"    Difference: {df_diff.at[idx, 'Difference']}")
-			
-			# Also show original values for debugging
-			if 'Debits_Original' in df_diff.columns:
-				# print(f"    Debit Original: {df_diff.at[idx, 'Debits_Original']}")
-				pass
-			if 'Balance_Original' in df_diff.columns:
-				# print(f"    Balance Original: {df_diff.at[idx, 'Balance_Original']}")
-				pass
-		
-		all_correct = False
-	
-	# print("<<< Difference calculation completed")
-	return df_diff, all_correct, adjusted
+    """
+    Calculate difference using formula:
+    BALANCE(i-1) + CREDIT(i) + DEBIT(i) - BALANCE(i)
+    and check if difference is 0 for all rows.
+    
+    If differences are only in decimals (between -0.99 and 0.99),
+    adjust ALL balances to make difference 0 for ALL rows.
+    """
+    print(">>> Calculating differences for OCR verification...")
+    
+    # Create a copy and reset index to ensure continuous integer indices
+    df_diff = df.copy().reset_index(drop=True)
+    
+    # Debug: Print DataFrame info
+    # print(f"DataFrame shape after reset: {df_diff.shape}")
+    # print(f"Available columns: {list(df_diff.columns)}")
+    
+    # Initialize difference column
+    df_diff['Difference'] = 0.0
+    df_diff['Balance_Adjusted'] = df_diff['Balance_Corrected'].copy() if 'Balance_Corrected' in df_diff.columns else df_diff['Balance'].copy()
+    
+    # Check if we have the corrected columns
+    has_corrected_debits = 'Debits_Corrected' in df_diff.columns
+    has_corrected_credits = 'Credits_Corrected' in df_diff.columns
+    has_corrected_balance = 'Balance_Corrected' in df_diff.columns
+    
+    # print(f"Has corrected columns - Debits: {has_corrected_debits}, Credits: {has_corrected_credits}, Balance: {has_corrected_balance}")
+    
+    # Use corrected columns if available, otherwise use original
+    debit_col = 'Debits_Corrected' if has_corrected_debits else 'Debits'
+    credit_col = 'Credits_Corrected' if has_corrected_credits else 'Credits'
+    balance_col = 'Balance_Adjusted'  # Use adjusted balance column for calculation
+    
+    # Check if columns exist, if not try to find alternatives
+    if debit_col not in df_diff.columns:
+        # print(f"WARNING: {debit_col} not in DataFrame columns!")
+        # Try to find alternative debit column
+        for col in df_diff.columns:
+            if 'debit' in col.lower():
+                debit_col = col
+                # print(f"Found alternative debit column: {debit_col}")
+                break
+    
+    if credit_col not in df_diff.columns:
+        # print(f"WARNING: {credit_col} not in DataFrame columns!")
+        # Try to find alternative credit column
+        for col in df_diff.columns:
+            if 'credit' in col.lower():
+                credit_col = col
+                # print(f"Found alternative credit column: {credit_col}")
+                break
+    
+    if balance_col not in df_diff.columns:
+        # print(f"WARNING: {balance_col} not in DataFrame columns!")
+        # Try to find alternative balance column
+        for col in df_diff.columns:
+            if 'balance' in col.lower():
+                balance_col = col
+                # print(f"Found alternative balance column: {balance_col}")
+                break
+    
+    # print(f"Using columns - Debit: {debit_col}, Credit: {credit_col}, Balance: {balance_col}")
+    
+    # Check if required columns exist
+    required_cols_missing = []
+    if debit_col not in df_diff.columns:
+        required_cols_missing.append(debit_col)
+    if credit_col not in df_diff.columns:
+        required_cols_missing.append(credit_col)
+    if balance_col not in df_diff.columns:
+        required_cols_missing.append(balance_col)
+    
+    if required_cols_missing:
+        # print(f"ERROR: Missing required columns: {required_cols_missing}")
+        # print("Cannot calculate differences. Returning original DataFrame.")
+        return df_diff, False, False
+    
+    # Helper function to round to 2 decimal places
+    def round_to_2(val):
+        if pd.isna(val) or str(val).strip().lower() in ["", "nan", "none"]:
+            return 0.0
+        try: 
+            return round(float(val), 2)
+        except:
+            return 0.0
+    
+    # Round all numeric columns to 2 decimal places for consistent calculations
+    for col in [debit_col, credit_col, balance_col]:
+        if col in df_diff.columns:
+            df_diff[col] = df_diff[col].apply(round_to_2)
+    
+    # Calculate difference for each row starting from row 1
+    # print(f"DataFrame has {len(df_diff)} rows, will process rows 1 to {len(df_diff)-1}")
+    
+    # CRITICAL FIX: Use iloc instead of at to avoid index issues
+    for i in range(1, len(df_diff)):
+        try:
+            # Get previous balance (rounded) - using iloc for position-based access
+            prev_balance = 0
+            if i > 0 and balance_col in df_diff.columns:
+                prev_balance = round_to_2(df_diff.iloc[i-1][balance_col])
+            
+            # Get current values (rounded) - using iloc for position-based access
+            curr_debit = 0
+            if debit_col in df_diff.columns:
+                curr_debit = round_to_2(df_diff.iloc[i][debit_col])
+            
+            curr_credit = 0
+            if credit_col in df_diff.columns:
+                curr_credit = round_to_2(df_diff.iloc[i][credit_col])
+            
+            curr_balance = 0
+            if balance_col in df_diff.columns:
+                curr_balance = round_to_2(df_diff.iloc[i][balance_col])
+            
+            # Calculate difference using the formula: Balance(i-1) + Credit(i) + Debit(i) - Balance(i)
+            # Round to 2 decimal places to avoid floating-point errors
+            difference = round(prev_balance + curr_credit + curr_debit - curr_balance, 2)
+            
+            # Use iloc to set the value safely
+            df_diff.iloc[i, df_diff.columns.get_loc('Difference')] = difference
+            
+        except IndexError as e:
+            # print(f"IndexError at position {i}: {e}")
+            # print(f"DataFrame has {len(df_diff)} rows, trying to access row {i}")
+            break
+        except KeyError as e:
+            # print(f"KeyError at position {i}: {e}")
+            # print(f"Trying to access column that doesn't exist")
+            break
+        except Exception as e:
+            # print(f"Unexpected error at position {i}: {e}")
+            break
+    
+    # REQUIREMENT 2: Check if all differences are in the acceptable decimal range (-0.99 to 0.99)
+    differences = df_diff['Difference']
+    
+    # Check conditions for adjustment:
+    # 1. All differences must be between -0.99 and 0.99 (exclusive of -1 and 1)
+    all_differences_in_range = ((differences > -1.0) & (differences < 1.0)).all()
+    
+    if all_differences_in_range and len(df_diff) > 1:
+        # print("✓ All differences are within -0.99 to 0.99. Adjusting balances...")
+        
+        # FIXED: We need to adjust ALL balances consistently
+        # Start with first balance as reference
+        adjusted_balances = []
+        
+        # Keep the first balance as is (rounded to 2 decimal places)
+        if balance_col in df_diff.columns and not pd.isna(df_diff.iloc[0][balance_col]):
+            adjusted_balances.append(round_to_2(df_diff.iloc[0][balance_col]))
+        else:
+            adjusted_balances.append(0.0)
+        
+        # Calculate adjusted balances for all subsequent rows
+        for i in range(1, len(df_diff)):
+            # Get the adjusted previous balance
+            prev_adjusted_balance = adjusted_balances[-1]
+            
+            # Get current debit and credit (rounded)
+            curr_debit = 0
+            if debit_col in df_diff.columns:
+                curr_debit = round_to_2(df_diff.iloc[i][debit_col])
+            
+            curr_credit = 0
+            if credit_col in df_diff.columns:
+                curr_credit = round_to_2(df_diff.iloc[i][credit_col])
+            
+            # Calculate what the current balance SHOULD be based on previous adjusted balance
+            # Formula: Current Balance = Previous Balance + Credit + Debit
+            # Round to 2 decimal places to avoid floating-point errors
+            should_be_balance = round(prev_adjusted_balance + curr_credit + curr_debit, 2)
+            
+            # Store this as the adjusted balance
+            adjusted_balances.append(should_be_balance)
+            
+            # Update the Balance_Adjusted column using iloc
+            df_diff.iloc[i, df_diff.columns.get_loc('Balance_Adjusted')] = should_be_balance
+        
+        # Update the first row's Balance_Adjusted if it exists
+        if len(adjusted_balances) > 0 and balance_col in df_diff.columns:
+            df_diff.iloc[0, df_diff.columns.get_loc('Balance_Adjusted')] = adjusted_balances[0]
+        
+        # Recalculate differences after adjustment (with rounding)
+        for i in range(1, len(df_diff)):
+            # Get previous adjusted balance (rounded)
+            prev_balance = 0
+            if i > 0 and 'Balance_Adjusted' in df_diff.columns:
+                prev_balance = round_to_2(df_diff.iloc[i-1]['Balance_Adjusted'])
+            
+            # Get current values (rounded)
+            curr_debit = 0
+            if debit_col in df_diff.columns:
+                curr_debit = round_to_2(df_diff.iloc[i][debit_col])
+            
+            curr_credit = 0
+            if credit_col in df_diff.columns:
+                curr_credit = round_to_2(df_diff.iloc[i][credit_col])
+            
+            curr_balance = 0
+            if 'Balance_Adjusted' in df_diff.columns:
+                curr_balance = round_to_2(df_diff.iloc[i]['Balance_Adjusted'])
+            
+            # Recalculate difference with rounding
+            difference = round(prev_balance + curr_credit + curr_debit - curr_balance, 2)
+            df_diff.iloc[i, df_diff.columns.get_loc('Difference')] = difference
+        
+        adjusted = True
+        # print("✓ All balances have been adjusted to synchronize with transactions.")
+    
+    else:
+        adjusted = False
+        if len(df_diff) > 1:
+            # print("✗ Differences are not all within the decimal range. No adjustment made.")
+            pass
+            # Show the differences that are out of range
+            out_of_range = df_diff[~((df_diff['Difference'] > -1.0) & (df_diff['Difference'] < 1.0))]
+            if not out_of_range.empty:
+                # print(f"  Rows with differences out of range: {list(out_of_range.index)}")
+                pass
+                for idx in out_of_range.index[:3]:
+                    # print(f"    Row {idx}: Difference = {df_diff.at[idx, 'Difference']}")
+                    pass
+        else:
+            # print("✗ Not enough rows for adjustment.")
+            pass
+    
+    # Check if all differences are close to 0 (within tolerance)
+    tolerance = 0.001  # Allow very small floating point errors due to rounding
+    
+    # Calculate statistics
+    differences_abs = df_diff['Difference'].abs()
+    non_zero_diffs = df_diff[differences_abs > tolerance]
+    
+    if len(non_zero_diffs) == 0:
+        # print("✓ All differences are 0 - OCR values appear correct!")
+        all_correct = True
+    else:
+        # print(f"✗ Differences found - {len(non_zero_diffs)} rows have non-zero differences")
+        # print(f"  Max difference: {differences_abs.max()}")
+        # print(f"  Rows with differences: {list(non_zero_diffs.index)}")
+        pass
+        # Show some examples of problematic rows
+        for idx in non_zero_diffs.index[:5]:  # Show first 5 problematic rows
+            # print(f"\n  Row {idx}:")
+            # print(f"    Prev Balance: {round_to_2(df_diff.at[idx-1, 'Balance_Adjusted']) if idx > 0 and 'Balance_Adjusted' in df_diff.columns else 'N/A'}")
+            # print(f"    Debit: {round_to_2(df_diff.at[idx, debit_col])}")
+            # print(f"    Credit: {round_to_2(df_diff.at[idx, credit_col])}")
+            # print(f"    Current Balance: {round_to_2(df_diff.at[idx, 'Balance_Adjusted']) if 'Balance_Adjusted' in df_diff.columns else 'N/A'}")
+            # print(f"    Difference: {df_diff.at[idx, 'Difference']}")
+            
+            # Also show original values for debugging
+            if 'Debits_Original' in df_diff.columns:
+                # print(f"    Debit Original: {df_diff.at[idx, 'Debits_Original']}")
+                pass
+            if 'Balance_Original' in df_diff.columns:
+                # print(f"    Balance Original: {df_diff.at[idx, 'Balance_Original']}")
+                pass
+        
+        all_correct = False
+    
+    # print("<<< Difference calculation completed")
+    return df_diff, all_correct, adjusted
 
 def resolve_debit_credit_using_balance(df):
 	"""
@@ -1406,11 +1441,11 @@ def resolve_debit_credit_using_balance(df):
 	df["Credits"] = df["Credits"].replace(0.0, np.nan)
 
 	for i in range(1, len(df)):
-		prev_bal = df.at[i - 1, "Balance"]
-		curr_bal = df.at[i, "Balance"]
+		prev_bal = df.iloc[i - 1]["Balance"]
+		curr_bal = df.iloc[i]["Balance"]
 
-		debit = df.at[i, "Debits"]
-		credit = df.at[i, "Credits"]
+		debit = df.iloc[i]["Debits"]
+		credit = df.iloc[i]["Credits"]
 
 		# Only when BOTH are present
 		if pd.notna(debit) and pd.notna(credit):
@@ -1418,11 +1453,11 @@ def resolve_debit_credit_using_balance(df):
 
 				# Balance decreased → Debit
 				if curr_bal < prev_bal:
-					df.at[i, "Credits"] = np.nan
+					df.iloc[i, df.columns.get_loc("Credits")] = np.nan
 
 				# Balance increased → Credit
 				elif curr_bal > prev_bal:
-					df.at[i, "Debits"] = np.nan
+					df.iloc[i, df.columns.get_loc("Debits")] = np.nan
 			
 		#  CASE 2: BOTH missing (NEW logic added)
 		elif pd.isna(debit) and pd.isna(credit):
@@ -1436,6 +1471,7 @@ def resolve_debit_credit_using_balance(df):
 			# Balance decreased → Debit
 			elif diff < 0:
 				df.at[i, "Debits"] = abs(diff)	
+
 	return df
 
 def remove_trailing_summary_rows(df, max_check_rows=5):
@@ -1814,7 +1850,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 			(df['Credits'].isna() | (df['Credits'].astype(str).str.strip() == '')) &
 			(df['Debits'].isna() | (df['Debits'].astype(str).str.strip() == ''))
 		)]
-
+	
 	# Run all cleaning steps in sequence
 	df = run_step("clean_debit_credit", step_clean_debit_credit, df)
 	df = merge_balance_with_adjacent_type(df)
@@ -1841,7 +1877,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 	
 	df = run_step("remove_consecutive_duplicates", step_remove_consecutive_duplicates, df)
 
-	df = remove_blank_rows(df)
+	df = remove_blank_rows(df)	
 	
 	return df
 
@@ -2085,6 +2121,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		traceback.print_exc()
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\Admin\Downloads\failed_canara_p6\failed_sample\3472_Canara_Bank.csv"
-	output_csv = r"C:\Users\Admin\Documents\Metis\OCR Cleaning\Outputs\3472_Canara_Bank_Cleaned.csv"
+	input_csv = r"C:\Users\Admin\Downloads\kotak_p8\eval_dir\output\1927_Kotak_Mahindra_Bank\1927_Kotak_Mahindra_Bank.csv"
+	output_csv = r"C:\Users\Admin\Documents\Metis\OCR Cleaning\Outputs\1927_Kotak_Mahindra_Bank_Cleaned.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
