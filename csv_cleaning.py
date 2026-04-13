@@ -1985,9 +1985,7 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 			header_row = detect_header_row(df_raw)
 
 			if header_row is not None:
-				df_raw.to_csv(f"debug_{name}_detected_header_row.csv", index=False)
 				df_raw,indices=drop_last_rows(df_raw)
-				df_raw.to_csv(f"debug_{name}_after_dropping_last_rows.csv", index=False)
 				break
 			# except Exception as e:
 				# print(f"{name} failed: {e}")
