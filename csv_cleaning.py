@@ -1663,7 +1663,29 @@ def run_step(step_name, func, df):
 	except Exception as e:
 		print(f"{step_name}: FAILED with error: {e}\n")
 	return df
-
+def apply_debit_sign_majority_rule(df):
+    """
+    Apply majority rule to determine correct debit sign convention.
+    - If majority of non-zero debits are positive, flip all signs (negate).
+    - Else keep signs as they are.
+    - Credits are always forced positive (absolute value).
+    """
+    # Handle Debits
+    if 'Debits' in df.columns:
+        df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
+        nonzero = df['Debits'].dropna()
+        nonzero = nonzero[nonzero != 0]
+        if not nonzero.empty:
+            pos = (nonzero > 0).sum()
+            neg = (nonzero < 0).sum()
+            # Majority positive (or tie) → flip
+            if pos >= neg:
+                df['Debits'] = df['Debits'].apply(lambda x: -x if pd.notna(x) else x)
+    
+    # Handle Credits: always positive
+    if 'Credits' in df.columns:
+        df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce').abs()
+    return df
 
 def clean_bank_statement(df, file_path=None, logging=True):
 	"""
@@ -1796,7 +1818,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 				# Skip raw columns we just created
 				if col.endswith('_Raw'):
 					continue
-				df[col] = df[col].apply(extract_amount)
+				df[col] = df[col].apply(extract_amount_new)
 				if df[col].isnull().all():
 					df.drop(columns=[col], inplace=True)
 		return df
@@ -1830,36 +1852,40 @@ def clean_bank_statement(df, file_path=None, logging=True):
 				return val
 
 		# Use corrected values if available
-		if 'Debits_Corrected' in df.columns:
-			df['Debits'] = df['Debits_Corrected'].apply(
-				lambda x: (
-					round(float(x), 2) if float(x) < 0
-					else round(-1 * float(x), 2)
-				) if pd.notna(x) else ""
-			)
-
-		elif "Debits" in df.columns:
+		# Debits – keep the already majority‑adjusted column; only round.
+		if 'Debits' in df.columns:
 			df["Debits"] = df["Debits"].apply(
-				lambda x: (
-					round(float(x), 2) if float(x) < 0
-					else round(-1 * float(x), 2)
-				)
-				if str(x).strip() not in ["", "nan", "None"]
-				else ""
+				lambda x: round(float(x), 2) if pd.notna(x) and str(x).strip() not in ["", "nan", "None"] else ""
 			)
+		elif 'Debits_Corrected' in df.columns:
+			# Use corrected only if Debits column is missing
+			df['Debits'] = df['Debits_Corrected'].apply(
+				lambda x: round(float(x), 2) if pd.notna(x) else ""
+			)
+		else:
+			df['Debits'] = ""
 
-		# Credits → positive, empty stays empty
+		# # Credits → positive, empty stays empty
+		# if 'Credits_Corrected' in df.columns:
+		# 	df['Credits'] = df['Credits_Corrected'].apply(
+		# 		lambda x: round(float(x), 2) if pd.notna(x) else ""
+		# 	)
+		# elif "Credits" in df.columns:
+		# 	df["Credits"] = df["Credits"].apply(
+		# 		lambda x: round(float(x), 2)
+		# 		if str(x).strip() not in ["", "nan", "None"]
+		# 		else ""
+		# 	)
 		if 'Credits_Corrected' in df.columns:
 			df['Credits'] = df['Credits_Corrected'].apply(
-				lambda x: round(float(x), 2) if pd.notna(x) else ""
+				lambda x: abs(round(float(x), 2)) if pd.notna(x) else ""
 			)
 		elif "Credits" in df.columns:
 			df["Credits"] = df["Credits"].apply(
-				lambda x: round(float(x), 2)
+				lambda x: abs(round(float(x), 2))
 				if str(x).strip() not in ["", "nan", "None"]
 				else ""
-			)
-   
+    )
 
 		# Balance - use corrected if available
 		if 'Balance_Corrected' in df.columns:
@@ -1941,13 +1967,15 @@ def clean_bank_statement(df, file_path=None, logging=True):
 	df = run_step("merge_partial_rows", step_merge_partial_rows, df)
 	# Parse amounts FIRST (but save raw values)
 	df = run_step("remove_metadata_rows", step_remove_metadata_rows, df)
+	df = run_step("create_ocr_corrected_columns", step_create_ocr_corrected_columns, df)
 	df = run_step("parse_amounts", step_parse_amounts, df)
+	df = run_step("apply_debit_sign_majority_rule", apply_debit_sign_majority_rule, df)   # <-- NEW
 	df = run_step("resolve_debit_credit_using_balance", step_resolve_drcr_balance, df)
 	df = run_step("sync_raw_with_cleaned", step_sync_raw_with_cleaned, df)
 	# df = run_step("remove_metadata_rows", step_remove_metadata_rows, df)
 	
 	# Add the new step for OCR correction (uses raw values saved in parse_amounts)
-	df = run_step("create_ocr_corrected_columns", step_create_ocr_corrected_columns, df)
+	
 	
 	# print(f"\n>>> Running step: process_all_dates")
 	df = step_process_all_dates(df)
@@ -2037,27 +2065,27 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 						cleaned_df['Balance_Corrected'] = df_with_diff['Balance_Adjusted']
 					cleaned_df['Balance'] = df_with_diff['Balance_Adjusted']
 				
-				# ========== FINAL SIGN CORRECTION (only at the end) ==========
-				# Ensure Credits are positive
-				if 'Credits' in cleaned_df.columns:
-					cleaned_df['Credits'] = pd.to_numeric(cleaned_df['Credits'], errors='coerce')
-					cleaned_df['Credits'] = cleaned_df['Credits'].abs()
+				# # ========== FINAL SIGN CORRECTION (only at the end) ==========
+				# # Ensure Credits are positive
+				# if 'Credits' in cleaned_df.columns:
+				# 	cleaned_df['Credits'] = pd.to_numeric(cleaned_df['Credits'], errors='coerce')
+				# 	cleaned_df['Credits'] = cleaned_df['Credits'].abs()
 				
-				# Correct Debit signs based on balance movement
-				if 'Debits' in cleaned_df.columns and 'Balance' in cleaned_df.columns:
-					cleaned_df['Debits'] = pd.to_numeric(cleaned_df['Debits'], errors='coerce')
-					cleaned_df['Balance'] = pd.to_numeric(cleaned_df['Balance'], errors='coerce')
-					cleaned_df = cleaned_df.reset_index(drop=True)
-					for i in range(1, len(cleaned_df)):
-						prev_bal = cleaned_df.iloc[i-1]['Balance']
-						curr_bal = cleaned_df.iloc[i]['Balance']
-						debit = cleaned_df.iloc[i]['Debits']
-						if pd.notna(prev_bal) and pd.notna(curr_bal) and pd.notna(debit):
-							if curr_bal < prev_bal and debit > 0:
-								cleaned_df.iloc[i, cleaned_df.columns.get_loc('Debits')] = -debit
-							elif curr_bal > prev_bal and debit < 0:
-								cleaned_df.iloc[i, cleaned_df.columns.get_loc('Debits')] = abs(debit)
-				# ============================================================
+				# # Correct Debit signs based on balance movement
+				# if 'Debits' in cleaned_df.columns and 'Balance' in cleaned_df.columns:
+				# 	cleaned_df['Debits'] = pd.to_numeric(cleaned_df['Debits'], errors='coerce')
+				# 	cleaned_df['Balance'] = pd.to_numeric(cleaned_df['Balance'], errors='coerce')
+				# 	cleaned_df = cleaned_df.reset_index(drop=True)
+				# 	for i in range(1, len(cleaned_df)):
+				# 		prev_bal = cleaned_df.iloc[i-1]['Balance']
+				# 		curr_bal = cleaned_df.iloc[i]['Balance']
+				# 		debit = cleaned_df.iloc[i]['Debits']
+				# 		if pd.notna(prev_bal) and pd.notna(curr_bal) and pd.notna(debit):
+				# 			if curr_bal < prev_bal and debit > 0:
+				# 				cleaned_df.iloc[i, cleaned_df.columns.get_loc('Debits')] = -debit
+				# 			elif curr_bal > prev_bal and debit < 0:
+				# 				cleaned_df.iloc[i, cleaned_df.columns.get_loc('Debits')] = abs(debit)
+				# # ============================================================
 				
 				# ========== RECALCULATE DIFFERENCES AFTER SIGN CORRECTION ==========
 				# First, remove summary rows and fill missing balances
@@ -2202,6 +2230,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		traceback.print_exc()
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\Admin\Desktop\1013_IDFC_First_Bank_Ltd_.csv"
-	output_csv = r"C:\Users\Admin\Desktop\r1013_IDFC_First_Bank_Ltd_.csv"
+	input_csv = r"C:\Users\kayro\Downloads\canara_p6\temp_files\919_Canara_Bank.csv"
+	output_csv = r"C:\Users\kayro\Downloads\canara_p6\temp_files\r919_Canara_Bank.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
