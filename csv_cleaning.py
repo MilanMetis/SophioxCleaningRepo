@@ -1190,6 +1190,71 @@ def normalize_headers(df):
 	return df
 
 
+
+def merge_sweep_columns(df):
+    """
+    Merge Autosweep → Debits, Reverse Sweep → Credits.
+    Detection: first keyword (case-insensitive substring), then regex fallback.
+    """
+    debit_col = 'Debits' if 'Debits' in df.columns else None
+    credit_col = 'Credits' if 'Credits' in df.columns else None
+
+    if not debit_col and not credit_col:
+        return df
+
+    cols_original = list(df.columns)
+    cols_lower = [c.lower().strip() for c in cols_original]
+
+    # --- Autosweep detection (keyword first, then regex) ---
+    autosweep_col = None
+    # Keyword search
+    for i, col_low in enumerate(cols_lower):
+        if 'autosweep' in col_low or 'auto sweep' in col_low:
+            autosweep_col = cols_original[i]
+            break
+    # Regex fallback if keyword not found
+    if not autosweep_col:
+        pattern_auto = re.compile(r'auto\s*swe+[eia]p?', re.IGNORECASE)
+        for i, col_orig in enumerate(cols_original):
+            if pattern_auto.search(col_orig):
+                autosweep_col = col_orig
+                break
+
+    # --- Reverse Sweep detection ---
+    reverse_sweep_col = None
+    # Keyword search
+    for i, col_low in enumerate(cols_lower):
+        if 'reverse sweep' in col_low or 'rev sweep' in col_low:
+            reverse_sweep_col = cols_original[i]
+            break
+    # Regex fallback
+    if not reverse_sweep_col:
+        pattern_rev = re.compile(r'rev(?:erse|urse)?\s*swe+[eia]p?', re.IGNORECASE)
+        for i, col_orig in enumerate(cols_original):
+            if pattern_rev.search(col_orig):
+                reverse_sweep_col = col_orig
+                break
+
+    # Helper to fill empty cells
+    def fill_empty(target_series, source_series):
+        target_str = target_series.astype(str).replace(['', 'nan', 'None', '0', '0.0'], np.nan)
+        source_str = source_series.astype(str).replace(['', 'nan', 'None', '0', '0.0'], np.nan)
+        mask = source_str.notna() & (target_str.isna() | (target_str.str.strip() == ''))
+        target_series = target_series.copy()
+        target_series.loc[mask] = source_str.loc[mask]
+        return target_series
+
+    if autosweep_col and debit_col:
+        df[debit_col] = fill_empty(df[debit_col], df[autosweep_col])
+        df.drop(columns=[autosweep_col], inplace=True)
+
+    if reverse_sweep_col and credit_col:
+        df[credit_col] = fill_empty(df[credit_col], df[reverse_sweep_col])
+        df.drop(columns=[reverse_sweep_col], inplace=True)
+
+    return df
+
+
 def create_ocr_corrected_columns(df):
 	"""
 	Create corrected columns for Debit, Credit and Balance
@@ -1964,6 +2029,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 	
 	df = run_step("remove_duplicate_column", step_remove_duplicate_column, df)
 	df = run_step("normalize_headers", step_normalize_headers, df)
+	df = run_step("merge_sweep_columns", merge_sweep_columns, df)
 	df = run_step("merge_partial_rows", step_merge_partial_rows, df)
 	# Parse amounts FIRST (but save raw values)
 	df = run_step("remove_metadata_rows", step_remove_metadata_rows, df)
@@ -2230,6 +2296,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		traceback.print_exc()
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\kayro\Downloads\canara_p6\temp_files\919_Canara_Bank.csv"
-	output_csv = r"C:\Users\kayro\Downloads\canara_p6\temp_files\r919_Canara_Bank.csv"
+	input_csv = r"D:\d_Downloads\icici_auto_sweep.csv"
+	output_csv = r"D:\d_Downloads\ricici_auto_sweep.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
