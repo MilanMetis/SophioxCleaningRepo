@@ -13,7 +13,6 @@ import shutil
 import re
 import sys
 import traceback
-import openpyxl
 from tqdm import tqdm
 
 # Suppress warnings for cleaner output
@@ -675,65 +674,35 @@ def save_updated_json_with_updates(json_data, file_path):
         print(f"Error saving updated JSON: {e}")
         return None
 
-def create_validation_excel_with_timestamp(validation_base_path):
-    """
-    Create a new validation Excel with timestamp in the name.
-    
-    Args:
-        validation_base_path (str): Base folder path where Excel will be created
-        
-    Returns:
-        str: Full path to the created Excel file
-    """
-    try:
-        # Create timestamp for unique filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        excel_filename = f"validation_result_{timestamp}.xlsx"
-        excel_path = Path(validation_base_path) / excel_filename
-        
-        # print(f"Creating new validation Excel: {excel_path}")?
-        return str(excel_path)
-        
-    except Exception as e:
-        # print(f"Error creating validation Excel path: {e}")
-        # Fallback to default path with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return str(Path(validation_base_path) / f"validation_result_{timestamp}.xlsx")
 
-def update_validation_excel(result, excel_path):
+def update_validation_csv(result, csv_path):
     """
-    Update the validation Excel with the result of processing one JSON file.
+    Append or create a CSV file with validation results.
     
     Args:
         result (dict): Result dictionary from process_single_json
-        excel_path (str): Path to validation Excel (will be created if doesn't exist)
+        csv_path (str): Path to validation CSV file
         
     Returns:
         bool: True if successful, False otherwise
     """
     try:
-        # Convert result to DataFrame
         result_df = pd.DataFrame([result])
         
-        # Check if file exists
-        if os.path.exists(excel_path):
-            # Read existing data
-            existing_df = pd.read_excel(excel_path)
-            # Append new row
-            updated_df = pd.concat([existing_df, result_df], ignore_index=True)
-            # Write back
-            updated_df.to_excel(excel_path, index=False)
-        else:
-            # Create new file
-            result_df.to_excel(excel_path, index=False)
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
         
-        # print(f"Validation result saved to: {excel_path}")
+        if os.path.exists(csv_path):
+            # Append without header
+            result_df.to_csv(csv_path, mode='a', header=False, index=False)
+        else:
+            # Write with header
+            result_df.to_csv(csv_path, mode='w', header=True, index=False)
         return True
         
     except Exception as e:
-        print(f"Error updating validation Excel: {e}")
+        print(f"Error updating validation CSV: {e}")
         return False
-
 
 def get_checks_config():
     """
@@ -795,7 +764,7 @@ def get_exception_config():
     }
     return exception_config
 
-def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC.csv", apply_ifsc_updates=False, log_to_excel=True):
+def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC.csv", apply_ifsc_updates=False, log_to_csv=True):
     """
     MAIN FUNCTION: Process a single JSON file and determine its status.
     Always calls get_checks_config() to get the check configuration.
@@ -805,7 +774,7 @@ def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC
         output_folder (str): Output folder path for storing processed JSON
         ifsc_csv_path (str): Path to IFSC CSV file
         apply_ifsc_updates (bool): Whether to apply IFSC/MICR updates (False by default)
-        log_to_excel (bool): Whether to save logs to Excel (True by default)
+        log_to_csv (bool): Whether to save logs to csv (True by default)
         
     Returns:
         tuple: (result_dict, updated_json_data, output_json_path)
@@ -822,9 +791,8 @@ def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC
         output_path = Path(output_folder) / json_file.name
         print(f"Output folder specified, processed JSON will be saved to: {output_path}")
     
-    # Fixed validation Excel path in json_check_log folder
-    excel_path = Path("json_check_log") / "json_checks_result.xlsx"
-    # print(f"Validation Excel will be saved to: {output_path},{excel_path}")
+    # Fixed validation csv path in json_check_log folder
+    csv_path = Path("json_check_log") / "json_checks_result.csv"
     
     try:
         # Read the entire file content as text first
@@ -850,8 +818,8 @@ def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC
             
             save_updated_json_with_updates(minimal_json, output_path)
             
-            if log_to_excel:
-                update_validation_excel(result, str(excel_path))
+            if log_to_csv:
+                update_validation_csv(result, str(csv_path))          
             
             return result, minimal_json, output_path
         
@@ -872,14 +840,14 @@ def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC
                     original_data['checks'] = 'Already Failed'
                     original_data['exception'] = None
                     save_updated_json_with_updates(original_data, output_path)
-                    if log_to_excel:
-                        result_for_excel = {
+                    if log_to_csv:
+                        result_for_csv = {
                             'json_file': json_file.name,
                             'status': 'Failed',
                             'reason': 'Already Failed',
                             'exception': ''
                         }
-                        update_validation_excel(result_for_excel, str(excel_path))
+                        update_validation_csv(result_for_csv, str(csv_path))
                     return original_data, original_data, output_path
                 
                 # Structurally valid – decide whether to re‑evaluate based on exception config
@@ -893,14 +861,14 @@ def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC
                     original_data['checks'] = 'Already Failed'
                     original_data['exception'] = None
                     save_updated_json_with_updates(original_data, output_path)
-                    if log_to_excel:
-                        result_for_excel = {
+                    if log_to_csv:
+                        result_for_csv = {
                             'json_file': json_file.name,
                             'status': 'Failed',
                             'reason': 'Already Failed',
                             'exception': ''
                         }
-                        update_validation_excel(result_for_excel, str(excel_path))
+                        update_validation_csv(result_for_csv, str(csv_path))
                     return original_data, original_data, output_path
                 else:
                    # print(f"⚠️ File was Failed but exception logic enabled, re‑evaluating: {json_file.name}")
@@ -1096,7 +1064,7 @@ def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC
                 )
             request_id = original_data.get('request_id', '')
             message = original_data.get('message', '')
-            # Prepare result dictionary for Excel log
+            # Prepare result dictionary for csv log
             base_result = {
                 'request_id': request_id,
                 'message': message,
@@ -1104,10 +1072,9 @@ def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC
                 'cif_mobile_swap': swap_message,
                 'ifsc_updates_applied': apply_ifsc_updates,
                 'status': overall_status,
-                'exception': ', '.join(exception_checks_list) if exception_applied else ''
+                'exception': ', '.join(exception_checks_list) if exception_applied else '',
+                'reason': reason_value if overall_status == 'Failed' else ''
             }
-            if overall_status == 'Failed':
-                base_result['reason'] = reason_value
 
             # Add individual check results
             for check_name, check_result in checks.items():
@@ -1156,8 +1123,8 @@ def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC
             # Save to output path
             save_updated_json_with_updates(updated_data, output_path)
             
-            if log_to_excel:
-                update_validation_excel(result, str(excel_path))
+            if log_to_csv:
+               update_validation_csv(result, str(csv_path))
             
             return result, updated_data, output_path
             
@@ -1202,8 +1169,8 @@ def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC
             
             save_updated_json_with_updates(output_data, output_path)
             
-            if log_to_excel:
-                update_validation_excel(result, str(excel_path))
+            if log_to_csv:
+                update_validation_csv(result, str(csv_path))
             
             return result, output_data, output_path
             
@@ -1231,8 +1198,8 @@ def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC
                 }
                 save_updated_json_with_updates(minimal_json, output_path)
                 
-                if log_to_excel:
-                    update_validation_excel(result, str(excel_path))
+                if log_to_csv:
+                    update_validation_csv(result, str(csv_path))
                 
                 return result, minimal_json, output_path
             
@@ -1270,8 +1237,8 @@ def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC
             
             save_updated_json_with_updates(output_data, output_path)
             
-            if log_to_excel:
-                update_validation_excel(result, str(excel_path))
+            if log_to_csv:
+                update_validation_csv(result, str(csv_path))
             
             return result, output_data, output_path
             
@@ -1291,23 +1258,23 @@ def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC
             }
             save_updated_json_with_updates(minimal_json, output_path)
             
-            if log_to_excel:
-                update_validation_excel(result, str(excel_path))
+            if log_to_csv:
+                update_validation_csv(result, str(csv_path))
                 
             return result, minimal_json, output_path
 
-# if __name__ == "__main__":
-#     folder_path = r"C:\Users\kayro\Desktop\New folder"
+if __name__ == "__main__":
+    folder_path = r"C:\Users\kayro\Desktop\New folder"
     
-#     # 1. Get the list of files first so tqdm knows the total count
-#     json_files = glob.glob(os.path.join(folder_path, "*.json"))
+    # 1. Get the list of files first so tqdm knows the total count
+    json_files = glob.glob(os.path.join(folder_path, "*.json"))
     
-#     print(f"Found {len(json_files)} files to process.")
+    print(f"Found {len(json_files)} files to process.")
 
-#     # 2. Wrap the list in tqdm() to create the progress bar
-#     for file_path in tqdm(json_files, desc="Processing Files", unit="file"):
-#         try:
-#             json_check_main(file_path)
-#         except Exception as e:
-#             # tqdm.write allows printing without breaking the progress bar layout
-#             tqdm.write(f"Error processing {os.path.basename(file_path)}: {e}")
+    # 2. Wrap the list in tqdm() to create the progress bar
+    for file_path in tqdm(json_files, desc="Processing Files", unit="file"):
+        try:
+            json_check_main(file_path)
+        except Exception as e:
+            # tqdm.write allows printing without breaking the progress bar layout
+            tqdm.write(f"Error processing {os.path.basename(file_path)}: {e}")    
