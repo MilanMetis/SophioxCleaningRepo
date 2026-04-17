@@ -1570,6 +1570,114 @@ def calculate_difference_and_verify(df):
 	# print("<<< Difference calculation completed")
 	return df_diff, all_correct, adjusted
 
+def process_difference_rows(df, debug=False, match_threshold=0.5):
+
+	df = df.copy()
+
+	# Ensure numeric columns
+	df['Balance_Num'] = pd.to_numeric(df['Balance'], errors='coerce')
+	df['Credits_Num'] = pd.to_numeric(df.get('Credits', 0), errors='coerce').fillna(0)
+	df['Debits_Num'] = pd.to_numeric(df.get('Debits', 0), errors='coerce').fillna(0)
+
+	# Initialize new columns
+	df['New_Balance'] = np.nan
+	df['New_Credit'] = np.nan
+	df['New_Debit'] = np.nan
+	df['LeftMatch_NewBalance_Score'] = 0.0
+	df['LeftMatch_NewCredit_Score'] = 0.0
+	df['LeftMatch_NewDebit_Score'] = 0.0
+
+	# Helper functions for digit matching
+	def digits_only(x):
+		if pd.isna(x):
+			return ""
+		s = str(x).lstrip('-')
+		return ''.join(ch for ch in s if ch.isdigit())
+
+	def left_match_ratio(val, ref):
+		d_val = digits_only(val)
+		d_ref = digits_only(ref)
+		if not d_ref:
+			return 0.0
+		matches = 0
+		for i in range(min(len(d_val), len(d_ref))):
+			if d_val[i] == d_ref[i]:
+				matches += 1
+			else:
+				break
+		return matches / len(d_ref)
+
+	# We'll process rows sequentially to propagate corrected balances
+	prev_balance = None  # running previous balance (after possible correction)
+
+	for i in df.index:
+		curr_original = df.at[i, 'Balance_Num']
+		credit = df.at[i, 'Credits_Num']
+		debit = df.at[i, 'Debits_Num']
+
+		# For the very first row, use the original balance as previous (no prior correction)
+		if prev_balance is None:
+			prev_balance = curr_original
+
+		if pd.isna(prev_balance) or pd.isna(curr_original):
+			# Can't compute, leave NaN
+			prev_balance = curr_original  # reset to original for next row
+			continue
+
+		# Check if this row has a non-zero Difference (needs processing)
+		diff = df.at[i, 'Difference']
+		if diff != 0 and not pd.isna(diff):
+			# Compute new balance using the CORRECTED previous balance
+			new_balance = prev_balance + credit + debit
+			df.at[i, 'New_Balance'] = round(new_balance, 2)
+
+			# Determine transaction direction for New_Credit / New_Debit
+			if prev_balance > curr_original:
+				amount = prev_balance - curr_original
+				df.at[i, 'New_Debit'] = round(amount, 2)
+				df.at[i, 'New_Credit'] = 0.0
+			elif prev_balance < curr_original:
+				amount = curr_original - prev_balance
+				df.at[i, 'New_Credit'] = round(amount, 2)
+				df.at[i, 'New_Debit'] = 0.0
+			else:
+				df.at[i, 'New_Debit'] = 0.0
+				df.at[i, 'New_Credit'] = 0.0
+
+			# Compute digit-match scores for this row
+			bal_score = left_match_ratio(df.at[i, 'New_Balance'], curr_original)
+			credit_score = left_match_ratio(df.at[i, 'New_Credit'], credit)
+			debit_score = left_match_ratio(df.at[i, 'New_Debit'], debit)
+
+			df.at[i, 'LeftMatch_NewBalance_Score'] = bal_score
+			df.at[i, 'LeftMatch_NewCredit_Score'] = credit_score
+			df.at[i, 'LeftMatch_NewDebit_Score'] = debit_score
+
+			# Correction logic: if New_Balance score > threshold, overwrite original Balance
+			if bal_score > match_threshold:
+				df.at[i, 'Balance'] = df.at[i, 'New_Balance']
+				prev_balance = df.at[i, 'New_Balance']   # update running previous balance
+				if debug:
+					print(f"Row {i}: Corrected Balance to {prev_balance:.2f} (score={bal_score:.3f})")
+			else:
+				prev_balance = curr_original  # keep original for next row's calculation
+
+		else:
+			# Row with Difference == 0: no change, just set New_Balance to curr_original
+			df.at[i, 'New_Balance'] = curr_original
+			df.at[i, 'New_Credit'] = 0.0
+			df.at[i, 'New_Debit'] = 0.0
+			# Scores remain 0
+			prev_balance = curr_original  # unchanged
+
+		if debug and diff != 0 and not pd.isna(diff):
+			pass
+			# print(f"Row {i}: Prev_bal(used)={prev_balance_used:.2f}, Curr_orig={curr_original:.2f}, "
+			#       f"New_Bal={df.at[i,'New_Balance']:.2f}, Score={df.at[i,'LeftMatch_NewBalance_Score']:.3f}")
+
+	return df
+
+
 def resolve_debit_credit_using_balance(df):
 	"""
 	If both Debits and Credits exist in the same row,
@@ -2159,9 +2267,12 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 				
 				# Fill missing balances (e.g., from overlapped text like "page")
 				cleaned_df = fill_missing_balances(cleaned_df)
+				cleaned_df['Difference'] = df_with_diff['Difference']
+
+				df_corrected = process_difference_rows(cleaned_df, debug=False, match_threshold=0.5)
 				
 				# Now recalculate differences with the corrected balances
-				df_with_diff_final, all_correct_final, adjusted_final = calculate_difference_and_verify(cleaned_df)
+				df_with_diff_final, all_correct_final, adjusted_final = calculate_difference_and_verify(df_corrected)
 				if adjusted_final and 'Balance_Adjusted' in df_with_diff_final.columns:
 					if 'Balance_Corrected' in cleaned_df.columns:
 						cleaned_df['Balance_Corrected'] = df_with_diff_final['Balance_Adjusted']
@@ -2172,7 +2283,7 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 				# Save the main cleaned file (without debug columns)
 				required_cols = ['XN Date', 'Cheque No', 'Narration', 'Debits', 'Credits', 'Balance']
 				available_cols = [col for col in required_cols if col in cleaned_df.columns]
-				main_cleaned_df = cleaned_df[available_cols]
+				main_cleaned_df = df_corrected[available_cols]
 				main_cleaned_df.to_csv(output_path, index=False)
 
 				# Save debug file with all columns (differences will be zero now)
@@ -2207,6 +2318,10 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 					# Add difference column
 					if 'Difference' in df_with_diff.columns:
 						debug_cols.append('Difference')
+
+					for col in ['New_Balance', 'New_Credit', 'New_Debit','LeftMatch_NewBalance_Score', 'LeftMatch_NewCredit_Score', 'LeftMatch_NewDebit_Score']:
+						if col in df_with_diff.columns:
+							debug_cols.append(col)
 					
 					# Create debug dataframe
 					debug_df = df_with_diff[debug_cols].copy()
@@ -2296,6 +2411,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		traceback.print_exc()
 
 if __name__ == "__main__":
-	input_csv = r"D:\d_Downloads\icici_auto_sweep.csv"
-	output_csv = r"D:\d_Downloads\ricici_auto_sweep.csv"
+	input_csv = r"C:\Users\Admin\Downloads\icici_p1_raw\temp_files\5974_ICICI_Bank.csv"
+	output_csv = r"C:\Users\Admin\Downloads\icici_p1_output\5974_Cleaned.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
