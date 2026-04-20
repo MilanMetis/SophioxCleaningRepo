@@ -1,5 +1,5 @@
 # Code Author: Kayroze Shroff, Gaurav More
-# Updated Date : 16-04-2026
+# Updated Date : 20-04-2026
 
 import json
 import glob
@@ -1097,14 +1097,16 @@ def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC
             if exception_applied:
                 # Keep original failed checks in 'checks', add 'exception' field
                 updated_data['checks'] = failed_checks_str if failed_checks_str else "Success"
-                updated_data['exception'] = ', '.join(exception_checks_list)
+                #updated_data['exception'] = ', '.join(exception_checks_list)
+                updated_data['alert'] = exception_checks_list   # <-- list directly
+                updated_data.pop('exception', None)             # <-- remove old key if exists
                 updated_data['status'] = 'Success'
                 updated_data['reason'] = None
                 print(f"\nFile passed with exceptions: {', '.join(exception_checks_list)}")
                 print(f"   (Failed checks recorded in 'checks': {failed_checks_str})")
             else:
                 # Always include exception field, set to None when not applied
-                updated_data['exception'] = None
+                updated_data['alert'] = None
                 if overall_status == 'Success':
                     updated_data['checks'] = "Success"
                     updated_data['status'] = 'Success'
@@ -1263,18 +1265,18 @@ def json_check_main(json_file_path, output_folder=None, ifsc_csv_path="IFSC/IFSC
                 
             return result, minimal_json, output_path
 
-if __name__ == "__main__":
-    folder_path = r"C:\Users\kayro\Desktop\New folder"
+# if __name__ == "__main__":
+#     folder_path = r"./output"
     
-    # 1. Get the list of files first so tqdm knows the total count
-    json_files = glob.glob(os.path.join(folder_path, "*.json"))
+#     # 1. Get the list of files first so tqdm knows the total count
+#     json_files = glob.glob(os.path.join(folder_path, "*.json"))
     
-    print(f"Found {len(json_files)} files to process.")
+#     print(f"Found {len(json_files)} files to process.")
 
-    # 2. Wrap the list in tqdm() to create the progress bar
-    for file_path in tqdm(json_files, desc="Processing Files", unit="file"):
-        try:
-            json_check_main(file_path)
-        except Exception as e:
-            # tqdm.write allows printing without breaking the progress bar layout
-            tqdm.write(f"Error processing {os.path.basename(file_path)}: {e}")    
+#     # 2. Wrap the list in tqdm() to create the progress bar
+#     for file_path in tqdm(json_files, desc="Processing Files", unit="file"):
+#         try:
+#             json_check_main(file_path)
+#         except Exception as e:
+#             # tqdm.write allows printing without breaking the progress bar layout
+#             tqdm.write(f"Error processing {os.path.basename(file_path)}: {e}")    
