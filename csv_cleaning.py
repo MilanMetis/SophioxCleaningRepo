@@ -1860,6 +1860,39 @@ def apply_debit_sign_majority_rule(df):
         df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce').abs()
     return df
 
+def remove_first_row_if_no_transaction(df):
+    """
+    Drop the first row if both Debits and Credits are effectively empty (NaN, None, 
+    empty string, whitespace, '0', '0.0', etc.) and contain no financial value.
+    """
+    if df.empty:
+        return df
+
+    def is_blank_or_zero(val):
+        # Check for NaN / None
+        if pd.isna(val):
+            return True
+        # Convert to string and strip whitespace
+        s = str(val).strip()
+        # Check for common empty/zero representations
+        if s.lower() in ('', 'nan', 'none', 'null', '0', '0.0', '0.00'):
+            return True
+        # Try numeric conversion; if successful and zero -> treat as blank
+        try:
+            if float(s) == 0.0:
+                return True
+        except (ValueError, TypeError):
+            pass
+        return False
+
+    first_row = df.iloc[0]
+    debit_empty = is_blank_or_zero(first_row.get('Debits'))
+    credit_empty = is_blank_or_zero(first_row.get('Credits'))
+
+    if debit_empty and credit_empty:
+        # Drop the first row and reset index
+        return df.iloc[1:].reset_index(drop=True)
+    return df
 def clean_bank_statement(df, file_path=None, logging=True):
 	"""
 	Main cleaning pipeline for bank statements
@@ -1927,7 +1960,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 		# - "opening balance" 
 		# - "closing balance" 
 		USELESS_TXN_REGEX = re.compile(
-			r'\bbrought\s*forward\b|\bopening\s*balance\b|\bclosing\s*balance\b',
+			r'\bbrought\s*forward\b|\bopening\s*balance\b|\bclosing\s*balance\b|\bb/f\b|\bbf\b',
 			re.IGNORECASE
 		)
 
@@ -2161,7 +2194,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 	df = run_step("remove_consecutive_duplicates", step_remove_consecutive_duplicates, df)
 
 	df = remove_blank_rows(df)	
-	
+	df = remove_first_row_if_no_transaction(df) 
 	return df
 
 
@@ -2411,6 +2444,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		traceback.print_exc()
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\Admin\Downloads\icici_p1_raw\temp_files\5974_ICICI_Bank.csv"
-	output_csv = r"C:\Users\Admin\Downloads\icici_p1_output\5974_Cleaned.csv"
+	input_csv = r"D:\d_Downloads\eval_dir\output\1475_IDBI_Bank\1475_IDBI_Bank.csv"
+	output_csv = r"D:\d_Downloads\eval_dir\output\1475_IDBI_Bank\r1475_IDBI_Bank.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
