@@ -189,9 +189,9 @@ def drop_last_rows(df):
 		base_shape_row_for = 0
 
 	candidates = {
-    row: base_shape_row,
-    row_prev: base_shape_row_prev,
-    row_for: base_shape_row_for
+	row: base_shape_row,
+	row_prev: base_shape_row_prev,
+	row_for: base_shape_row_for
 	}
 
 	# index with max value
@@ -1035,7 +1035,7 @@ def normalize_headers(df):
 		"Cheque No": {"Cheque/Refer enceNo","Cheque.No./Ref.No", "Cheq No ue", "CHQ/REFNO.","CHEQUE/REFERENCE#", "ChequeNo.", "Chq.No", "Cheque No","Chq./ref.no", "Ref No", "Cheque number", "Ref no./cheque no.","Chq.no", "Chq No", "CHQ.NO.", "CHQ NO", "Cheque No.","Cheque Number", "Chq./Ref.No", "Chq.No."," Ref No./Cheque No.", "CHQ.NO", "Cnq.No.","Chq/Ref number", "Chq/Ref No"},
 		"Narration": {"Transaction Reference","Transaction","TransactionReference","RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks","TransactionParticulars"},
 		"Credits": {"CrAmount","DEPOSITAMT","Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
-		"Debits": {"W ithdrawals","Dr Amount","Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
+		"Debits": {"Deblt","W ithdrawals","Dr Amount","Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
 		"Balance": {"Amount","BALANCEAMT","TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "Batance","BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance","C losingBalance INR"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance","Total Amount Dr/Cr"}
 	}
 
@@ -1063,6 +1063,12 @@ def normalize_headers(df):
 		"Balance": [r'\bbalance\b',r'\btotal\s*a\s*m\s*o\s*u\s*n\s*t\b',r'\bbalance\s*\(inr\)\b' r'\bclosing\b', r'\btransaction\s*details\s*comment.*payment\s*method\b',
 					r'\bavailable\b',r'\bbook\s*bal(?:ance)?\b',r'\brunning\s*bal(?:ance)?\b']
 	}
+
+	cols_lower = [str(c).lower().strip() for c in df.columns]
+
+	has_amount = any(re.search(r'\bamount\b', c) for c in cols_lower)
+	has_current_balance = any(re.search(r'\bcurrent\s*balance\b', c) for c in cols_lower)
+
 	standard_headers = set(headers.keys())
 
 	existing_standard_cols = set()
@@ -1107,6 +1113,22 @@ def normalize_headers(df):
 
 		mapped = None
 
+
+		if has_amount and has_current_balance:
+
+			# Map Current Balance → Balance
+			if re.search(r'curr.*bal', clean_col):   # OCR-safe
+				mapped = "Balance"
+				normalized_cols.append(mapped)
+				continue  # stop further processing for this column
+
+			# Protect Amount column
+			if re.fullmatch(r'amount', clean_col):
+				mapped = original_col
+				normalized_cols.append(mapped)
+				continue
+
+		
 				#  Exact dictionary match
 		for std, variants in headers.items():
 
@@ -1192,67 +1214,67 @@ def normalize_headers(df):
 
 
 def merge_sweep_columns(df):
-    """
-    Merge Autosweep → Debits, Reverse Sweep → Credits.
-    Detection: first keyword (case-insensitive substring), then regex fallback.
-    """
-    debit_col = 'Debits' if 'Debits' in df.columns else None
-    credit_col = 'Credits' if 'Credits' in df.columns else None
+	"""
+	Merge Autosweep → Debits, Reverse Sweep → Credits.
+	Detection: first keyword (case-insensitive substring), then regex fallback.
+	"""
+	debit_col = 'Debits' if 'Debits' in df.columns else None
+	credit_col = 'Credits' if 'Credits' in df.columns else None
 
-    if not debit_col and not credit_col:
-        return df
+	if not debit_col and not credit_col:
+		return df
 
-    cols_original = list(df.columns)
-    cols_lower = [c.lower().strip() for c in cols_original]
+	cols_original = list(df.columns)
+	cols_lower = [c.lower().strip() for c in cols_original]
 
-    # --- Autosweep detection (keyword first, then regex) ---
-    autosweep_col = None
-    # Keyword search
-    for i, col_low in enumerate(cols_lower):
-        if 'autosweep' in col_low or 'auto sweep' in col_low:
-            autosweep_col = cols_original[i]
-            break
-    # Regex fallback if keyword not found
-    if not autosweep_col:
-        pattern_auto = re.compile(r'auto\s*swe+[eia]p?', re.IGNORECASE)
-        for i, col_orig in enumerate(cols_original):
-            if pattern_auto.search(col_orig):
-                autosweep_col = col_orig
-                break
+	# --- Autosweep detection (keyword first, then regex) ---
+	autosweep_col = None
+	# Keyword search
+	for i, col_low in enumerate(cols_lower):
+		if 'autosweep' in col_low or 'auto sweep' in col_low:
+			autosweep_col = cols_original[i]
+			break
+	# Regex fallback if keyword not found
+	if not autosweep_col:
+		pattern_auto = re.compile(r'auto\s*swe+[eia]p?', re.IGNORECASE)
+		for i, col_orig in enumerate(cols_original):
+			if pattern_auto.search(col_orig):
+				autosweep_col = col_orig
+				break
 
-    # --- Reverse Sweep detection ---
-    reverse_sweep_col = None
-    # Keyword search
-    for i, col_low in enumerate(cols_lower):
-        if 'reverse sweep' in col_low or 'rev sweep' in col_low:
-            reverse_sweep_col = cols_original[i]
-            break
-    # Regex fallback
-    if not reverse_sweep_col:
-        pattern_rev = re.compile(r'rev(?:erse|urse)?\s*swe+[eia]p?', re.IGNORECASE)
-        for i, col_orig in enumerate(cols_original):
-            if pattern_rev.search(col_orig):
-                reverse_sweep_col = col_orig
-                break
+	# --- Reverse Sweep detection ---
+	reverse_sweep_col = None
+	# Keyword search
+	for i, col_low in enumerate(cols_lower):
+		if 'reverse sweep' in col_low or 'rev sweep' in col_low:
+			reverse_sweep_col = cols_original[i]
+			break
+	# Regex fallback
+	if not reverse_sweep_col:
+		pattern_rev = re.compile(r'rev(?:erse|urse)?\s*swe+[eia]p?', re.IGNORECASE)
+		for i, col_orig in enumerate(cols_original):
+			if pattern_rev.search(col_orig):
+				reverse_sweep_col = col_orig
+				break
 
-    # Helper to fill empty cells
-    def fill_empty(target_series, source_series):
-        target_str = target_series.astype(str).replace(['', 'nan', 'None', '0', '0.0'], np.nan)
-        source_str = source_series.astype(str).replace(['', 'nan', 'None', '0', '0.0'], np.nan)
-        mask = source_str.notna() & (target_str.isna() | (target_str.str.strip() == ''))
-        target_series = target_series.copy()
-        target_series.loc[mask] = source_str.loc[mask]
-        return target_series
+	# Helper to fill empty cells
+	def fill_empty(target_series, source_series):
+		target_str = target_series.astype(str).replace(['', 'nan', 'None', '0', '0.0'], np.nan)
+		source_str = source_series.astype(str).replace(['', 'nan', 'None', '0', '0.0'], np.nan)
+		mask = source_str.notna() & (target_str.isna() | (target_str.str.strip() == ''))
+		target_series = target_series.copy()
+		target_series.loc[mask] = source_str.loc[mask]
+		return target_series
 
-    if autosweep_col and debit_col:
-        df[debit_col] = fill_empty(df[debit_col], df[autosweep_col])
-        df.drop(columns=[autosweep_col], inplace=True)
+	if autosweep_col and debit_col:
+		df[debit_col] = fill_empty(df[debit_col], df[autosweep_col])
+		df.drop(columns=[autosweep_col], inplace=True)
 
-    if reverse_sweep_col and credit_col:
-        df[credit_col] = fill_empty(df[credit_col], df[reverse_sweep_col])
-        df.drop(columns=[reverse_sweep_col], inplace=True)
+	if reverse_sweep_col and credit_col:
+		df[credit_col] = fill_empty(df[credit_col], df[reverse_sweep_col])
+		df.drop(columns=[reverse_sweep_col], inplace=True)
 
-    return df
+	return df
 
 
 def create_ocr_corrected_columns(df):
@@ -1837,62 +1859,62 @@ def run_step(step_name, func, df):
 		print(f"{step_name}: FAILED with error: {e}\n")
 	return df
 def apply_debit_sign_majority_rule(df):
-    """
-    Apply majority rule to determine correct debit sign convention.
-    - If majority of non-zero debits are positive, flip all signs (negate).
-    - Else keep signs as they are.
-    - Credits are always forced positive (absolute value).
-    """
-    # Handle Debits
-    if 'Debits' in df.columns:
-        df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
-        nonzero = df['Debits'].dropna()
-        nonzero = nonzero[nonzero != 0]
-        if not nonzero.empty:
-            pos = (nonzero > 0).sum()
-            neg = (nonzero < 0).sum()
-            # Majority positive (or tie) → flip
-            if pos >= neg:
-                df['Debits'] = df['Debits'].apply(lambda x: -x if pd.notna(x) else x)
-    
-    # Handle Credits: always positive
-    if 'Credits' in df.columns:
-        df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce').abs()
-    return df
+	"""
+	Apply majority rule to determine correct debit sign convention.
+	- If majority of non-zero debits are positive, flip all signs (negate).
+	- Else keep signs as they are.
+	- Credits are always forced positive (absolute value).
+	"""
+	# Handle Debits
+	if 'Debits' in df.columns:
+		df['Debits'] = pd.to_numeric(df['Debits'], errors='coerce')
+		nonzero = df['Debits'].dropna()
+		nonzero = nonzero[nonzero != 0]
+		if not nonzero.empty:
+			pos = (nonzero > 0).sum()
+			neg = (nonzero < 0).sum()
+			# Majority positive (or tie) → flip
+			if pos >= neg:
+				df['Debits'] = df['Debits'].apply(lambda x: -x if pd.notna(x) else x)
+	
+	# Handle Credits: always positive
+	if 'Credits' in df.columns:
+		df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce').abs()
+	return df
 
 def remove_first_row_if_no_transaction(df):
-    """
-    Drop the first row if both Debits and Credits are effectively empty (NaN, None, 
-    empty string, whitespace, '0', '0.0', etc.) and contain no financial value.
-    """
-    if df.empty:
-        return df
+	"""
+	Drop the first row if both Debits and Credits are effectively empty (NaN, None, 
+	empty string, whitespace, '0', '0.0', etc.) and contain no financial value.
+	"""
+	if df.empty:
+		return df
 
-    def is_blank_or_zero(val):
-        # Check for NaN / None
-        if pd.isna(val):
-            return True
-        # Convert to string and strip whitespace
-        s = str(val).strip()
-        # Check for common empty/zero representations
-        if s.lower() in ('', 'nan', 'none', 'null', '0', '0.0', '0.00'):
-            return True
-        # Try numeric conversion; if successful and zero -> treat as blank
-        try:
-            if float(s) == 0.0:
-                return True
-        except (ValueError, TypeError):
-            pass
-        return False
+	def is_blank_or_zero(val):
+		# Check for NaN / None
+		if pd.isna(val):
+			return True
+		# Convert to string and strip whitespace
+		s = str(val).strip()
+		# Check for common empty/zero representations
+		if s.lower() in ('', 'nan', 'none', 'null', '0', '0.0', '0.00'):
+			return True
+		# Try numeric conversion; if successful and zero -> treat as blank
+		try:
+			if float(s) == 0.0:
+				return True
+		except (ValueError, TypeError):
+			pass
+		return False
 
-    first_row = df.iloc[0]
-    debit_empty = is_blank_or_zero(first_row.get('Debits'))
-    credit_empty = is_blank_or_zero(first_row.get('Credits'))
+	first_row = df.iloc[0]
+	debit_empty = is_blank_or_zero(first_row.get('Debits'))
+	credit_empty = is_blank_or_zero(first_row.get('Credits'))
 
-    if debit_empty and credit_empty:
-        # Drop the first row and reset index
-        return df.iloc[1:].reset_index(drop=True)
-    return df
+	if debit_empty and credit_empty:
+		# Drop the first row and reset index
+		return df.iloc[1:].reset_index(drop=True)
+	return df
 def clean_bank_statement(df, file_path=None, logging=True):
 	"""
 	Main cleaning pipeline for bank statements
@@ -2091,7 +2113,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 				lambda x: abs(round(float(x), 2))
 				if str(x).strip() not in ["", "nan", "None"]
 				else ""
-    )
+	)
 
 		# Balance - use corrected if available
 		if 'Balance_Corrected' in df.columns:
@@ -2444,6 +2466,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		traceback.print_exc()
 
 if __name__ == "__main__":
-	input_csv = r"D:\d_Downloads\eval_dir\output\1475_IDBI_Bank\1475_IDBI_Bank.csv"
-	output_csv = r"D:\d_Downloads\eval_dir\output\1475_IDBI_Bank\r1475_IDBI_Bank.csv"
+	input_csv = r"C:\Users\Admin\Documents\Metis\CNRB\eval_dir\output\27\27.csv"
+	output_csv = r"C:\Users\Admin\Documents\Metis\OCR Cleaning\Outputs\27_cleaned.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
