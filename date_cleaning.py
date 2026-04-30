@@ -143,7 +143,15 @@ def parse_custom_date(x) -> Optional[str]:
             'AUGUST': 'AUG', 'SEPTEMBER': 'SEP', 'SEPT': 'SEP',
             'OCTOBER': 'OCT', 'NOVEMBER': 'NOV', 'DECEMBER': 'DEC'
         }
-        
+                # NEW: Handle "MonthDay,Year" like "April24,2026" or "APRIL24,2026"
+        match = re.match(r'([A-Z]{3,9})(\d{1,2}),\s*(\d{4})', x_upper)
+        if match:
+            month_str, day, year = match.groups()
+            month_num = normalize_month(month_str)   # already maps "APRIL" → "04"
+            if month_num:
+                return f"{int(day):02d}/{month_num}/{year}"
+
+                
         for wrong, correct in month_corrections.items():
             x_upper = x_upper.replace(wrong, correct)
         
