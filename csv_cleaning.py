@@ -1982,7 +1982,7 @@ def clean_bank_statement(df, file_path=None, logging=True):
 		# - "opening balance" 
 		# - "closing balance" 
 		USELESS_TXN_REGEX = re.compile(
-			r'\bbrought\s*forward\b|\bopening\s*balance\b|\bclosing\s*balance\b|\bb/f\b|\bbf\b',
+			r'\bbrought\s*forward\b|\bopening\s*balance\b|\bclosing\s*balance\b|\bb/f\b',
 			re.IGNORECASE
 		)
 
@@ -2466,6 +2466,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		traceback.print_exc()
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\Admin\Documents\Metis\CNRB\eval_dir\output\27\27.csv"
-	output_csv = r"C:\Users\Admin\Documents\Metis\OCR Cleaning\Outputs\27_cleaned.csv"
+	input_csv = r"C:\Users\kayro\Desktop\2974_IDBI_Bank.csv"
+	output_csv = r"C:\Users\kayro\Desktop\r2974_IDBI_Bank.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)

@@ -23,7 +23,11 @@ custom_month_map = {
     'SEP': '09', 'SE': '09', 'SEPT': '09', 'SEPTEMBER': '09',
     'OCT': '10', 'OC': '10', '0CT': '10', '0ct': '10', 'OCTOBER': '10',
     'NOV': '11', 'NO': '11', 'NOVEMBER': '11',
-    'DEC': '12', 'DE': '12', 'DECEMBER': '12'
+    'DEC': '12', 'DE': '12', 'DECEMBER': '12',
+    'J UL': '07', 'J UN': '06', 'JU L': '07', 'JU N': '06',
+    'F EB': '02', 'MA R': '03', 'AP R': '04', 'MA Y': '05',
+    'JUN E': '06', 'JUL Y': '07', 'AU G': '08', 'SE P': '09',
+    'OC T': '10', 'NO V': '11', 'DE C': '12'
 }
 
 # Extended month map with all variations
@@ -55,7 +59,7 @@ def normalize_month(token: str) -> Optional[str]:
         if not token:
             return None
         
-        token = str(token).upper().strip()
+        token = re.sub(r'\s+', '', token)
         
         # Direct match
         if token in extended_month_map:
@@ -115,7 +119,7 @@ def parse_custom_date(x) -> Optional[str]:
                 year = '20' + year if int(year) <= 30 else '19' + year
             return f"{int(day):02d}/{int(month):02d}/{year}"
         
-        mixed_pattern2 = re.compile(r'^\s*(\d+)\s+(\d{1,2})[-/\.\s]+([A-Za-z]{3,9})[-/\.\s]+(\d{2,4})\s*$', re.IGNORECASE)
+        mixed_pattern2 = re.compile(r'^\s*(\d+)\s+(\d{1,2})[-/\.\s]+([A-Za-z]+(?:\s+[A-Za-z]+)?)[-/\.\s]+(\d{2,4})\s*$', re.IGNORECASE)
         match = mixed_pattern2.match(original_x)
         if match:
             prefix, day, month_str, year = match.groups()
@@ -144,7 +148,7 @@ def parse_custom_date(x) -> Optional[str]:
             'OCTOBER': 'OCT', 'NOVEMBER': 'NOV', 'DECEMBER': 'DEC'
         }
                 # NEW: Handle "MonthDay,Year" like "April24,2026" or "APRIL24,2026"
-        match = re.match(r'([A-Z]{3,9})(\d{1,2}),\s*(\d{4})', x_upper)
+        match = re.match(r'([A-Za-z]+(?:\s+[A-Za-z]+)?)(\d{1,2}),\s*(\d{4})', x_upper)
         if match:
             month_str, day, year = match.groups()
             month_num = normalize_month(month_str)   # already maps "APRIL" → "04"
@@ -165,7 +169,7 @@ def parse_custom_date(x) -> Optional[str]:
                 year = '20' + year_two if int(year_two) <= 30 else '19' + year_two
                 return f"{int(day):02d}/{month_num}/{year}"
         # Strategy 1: Try standard date formats with day, month, year (complete dates)
-        match = re.match(r'(\d{1,2})[-/\s\.]+([A-Z]{3,9})[-/\s\.]+(\d{2,4})', x_upper, re.IGNORECASE)
+        match = re.match(r'(\d{1,2})[-/\s\.]+([A-Za-z]+(?:\s+[A-Za-z]+)?)[-/\s\.]+(\d{2,4})', x_upper, re.IGNORECASE)
         if match:
             day, month_str, year = match.groups()
             month_num = normalize_month(month_str)
@@ -174,7 +178,7 @@ def parse_custom_date(x) -> Optional[str]:
                     year = '20' + year if int(year) <= 30 else '19' + year
                 return f"{int(day):02d}/{month_num}/{year}"
         
-        match = re.match(r'([A-Z]{3,9})[-/\s\.]+(\d{1,2})[-/\s\.]+(\d{2,4})', x_upper, re.IGNORECASE)
+        match = re.match(r'([A-Za-z]+(?:\s+[A-Za-z]+)?)[-/\s\.]+(\d{1,2})[-/\s\.]+(\d{2,4})', x_upper, re.IGNORECASE)
         if match:
             month_str, day, year = match.groups()
             month_num = normalize_month(month_str)
@@ -200,7 +204,7 @@ def parse_custom_date(x) -> Optional[str]:
         
         # Strategy 2: Handle compact formats with month names
         x_no_space = re.sub(r'\s+', '', x_upper)
-        match = re.match(r'(\d{1,2})([A-Z]{3,9})(\d{2,4})', x_no_space, re.IGNORECASE)
+        match = re.match(r'(\d{1,2})([A-Za-z]+(?:\s+[A-Za-z]+)?)(\d{2,4})', x_no_space, re.IGNORECASE)
         if match:
             day, month_str, year = match.groups()
             month_num = normalize_month(month_str)
@@ -209,7 +213,7 @@ def parse_custom_date(x) -> Optional[str]:
                     year = '20' + year if int(year) <= 30 else '19' + year
                 return f"{int(day):02d}/{month_num}/{year}"
         
-        match = re.match(r'([A-Z]{3,9})(\d{1,2})(\d{2,4})', x_no_space, re.IGNORECASE)
+        match = re.match(r'([A-Za-z]+(?:\s+[A-Za-z]+)?)(\d{1,2})(\d{2,4})', x_no_space, re.IGNORECASE)
         if match:
             month_str, day, year = match.groups()
             month_num = normalize_month(month_str)
@@ -219,7 +223,7 @@ def parse_custom_date(x) -> Optional[str]:
                 return f"{int(day):02d}/{month_num}/{year}"
        
         # Match "Month Day,Year" (space allowed)
-        match = re.match(r'([A-Za-z]{3,9})\s+(\d{1,2}),\s*(\d{4})', x_upper, re.IGNORECASE)
+        match = re.match(r'([A-Za-z]+(?:\s+[A-Za-z]+)?)\s+(\d{1,2}),\s*(\d{4})', x_upper, re.IGNORECASE)
         if match:
             month_str, day, year = match.groups()
             month_num = normalize_month(month_str)
