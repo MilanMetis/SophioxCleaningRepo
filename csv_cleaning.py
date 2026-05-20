@@ -322,7 +322,7 @@ def detect_header_row(df_raw):
 		]
 
 		# Must have enough non-numeric cells
-		if len(non_numeric) < len(row) // 2:
+		if len(non_numeric) < len(row_values) // 2:
 			continue
 
 
@@ -617,7 +617,7 @@ def fill_missing_balances(df):
 	"""
 	if df.empty:
 		return df
-
+	df = df.reset_index(drop=True)
 	# Ensure numeric
 	for col in ['Debits', 'Credits', 'Balance']:
 		if col in df.columns:
@@ -1882,6 +1882,9 @@ def apply_debit_sign_majority_rule(df):
 		df['Credits'] = pd.to_numeric(df['Credits'], errors='coerce').abs()
 	return df
 
+
+
+
 def remove_first_row_if_no_transaction(df):
 	"""
 	Drop the first row if both Debits and Credits are effectively empty (NaN, None, 
@@ -2201,7 +2204,6 @@ def clean_bank_statement(df, file_path=None, logging=True):
 	df = run_step("apply_debit_sign_majority_rule", apply_debit_sign_majority_rule, df)   # <-- NEW
 	df = run_step("resolve_debit_credit_using_balance", step_resolve_drcr_balance, df)
 	df = run_step("sync_raw_with_cleaned", step_sync_raw_with_cleaned, df)
-	# df = run_step("remove_metadata_rows", step_remove_metadata_rows, df)
 	
 	# Add the new step for OCR correction (uses raw values saved in parse_amounts)
 	
@@ -2219,6 +2221,118 @@ def clean_bank_statement(df, file_path=None, logging=True):
 	df = remove_first_row_if_no_transaction(df) 
 	return df
 
+def fix_duplicate_header_columns(df_raw):
+    """
+    Fix OCR column misalignment from repeated page-break headers.
+
+    Problem 1 (extra column): Repeated header has a duplicate label
+    (e.g. 'Remarks, Remarks'). Removes the extra column from following
+    data rows to restore canonical width.
+
+    Problem 2 (missing Cheque col): Repeated header is missing the
+    Cheque No column. Inserts a NaN at the canonical Cheque col index
+    in following data rows. Row grows by 1 naturally — no trimming.
+
+    First clean header is always kept. All subsequent headers dropped.
+    DataFrame is built to max row width; shorter rows are NaN-padded.
+    """
+
+    CHQ_KEYWORDS = ["chq", "cheque", "ref no", "chq.no", "cheque no", "cheque number"]
+
+    def _is_header_row(row_vals):
+        non_empty = [str(v).strip() for v in row_vals
+                     if str(v).strip().lower() not in ('', 'nan', 'none')]
+        if len(non_empty) < 3:
+            return False
+        if max(len(v) for v in non_empty) > 30:
+            return False
+        if any(sum(c.isdigit() for c in v) > 5 for v in non_empty):
+            return False
+        non_numeric = [v for v in non_empty
+                       if not re.fullmatch(r'-?\d+(\.\d+)?', v.replace(',', ''))]
+        if len(non_numeric) < 2:
+            return False
+        header_hits = sum(fuzzy_regex_match(v, HEADER_REGEX) for v in non_numeric)
+        return header_hits >= 2 and header_hits / max(len(non_numeric), 1) >= 0.4
+
+    def _non_empty_count(row):
+        return sum(1 for v in row
+                   if str(v).strip().lower() not in ('', 'nan', 'none'))
+
+    def _find_chq_col_index(row):
+        for idx, val in enumerate(row):
+            vl = str(val).strip().lower()
+            if any(k in vl for k in CHQ_KEYWORDS):
+                return idx
+        return None
+
+    n_cols = len(df_raw.columns)
+    data = [list(df_raw.iloc[i]) for i in range(len(df_raw))]
+    result_rows = []
+
+    first_header_kept = False
+    canonical_row = None
+    canonical_non_empty = 0
+    canonical_chq_idx = None
+
+    active_dup_col = None       # Problem 1
+    active_insert_col = None    # Problem 2
+
+    for i, row in enumerate(data):
+        if _is_header_row(row):
+            row_non_empty = _non_empty_count(row)
+
+            if not first_header_kept:
+                result_rows.append(row)
+                first_header_kept = True
+                canonical_row = row
+                canonical_non_empty = row_non_empty
+                canonical_chq_idx = _find_chq_col_index(row)
+                active_dup_col = None
+                active_insert_col = None
+                continue
+
+            # Reset both before deciding
+            active_dup_col = None
+            active_insert_col = None
+
+            if row_non_empty == canonical_non_empty + 1:
+                # Problem 1: one extra col — find the duplicate label
+                seen = {}
+                for idx, val in enumerate(row):
+                    vl = str(val).strip().lower()
+                    if vl in ('', 'nan', 'none'):
+                        continue
+                    if vl in seen:
+                        active_dup_col = idx
+                        break
+                    seen[vl] = idx
+
+            elif canonical_chq_idx is not None and _find_chq_col_index(row) is None:
+                # Problem 2: chq col missing in this section header
+                active_insert_col = canonical_chq_idx
+
+            continue  # always drop repeated header rows
+
+        # --- Data row ---
+        if active_dup_col is not None:
+            # Problem 1: remove extra col, row shrinks by 1
+            new_row = row[:active_dup_col] + row[active_dup_col + 1:]
+            result_rows.append(new_row)
+
+        elif active_insert_col is not None:
+            # Problem 2: insert NaN at chq col position, row grows by 1
+            new_row = row[:active_insert_col] + [np.nan] + row[active_insert_col:]
+            result_rows.append(new_row)
+
+        else:
+            result_rows.append(row)
+
+    # Build DataFrame to max row width; pad shorter rows with NaN
+    max_cols = max(len(r) for r in result_rows)
+    padded = [r + [np.nan] * (max_cols - len(r)) for r in result_rows]
+    return pd.DataFrame(padded, columns=list(range(max_cols)))
+
 
 def clean_main(file_path, output_path, logging=True, debug=True):
 	"""
@@ -2230,6 +2344,8 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		print(f"Debug mode: {debug}")
 		
 		df_raw = pd.read_csv(file_path, header=None)
+		df_raw = fix_duplicate_header_columns(df_raw)   # <-- ADD THIS LINE ONLY
+
 		# df_raw = run_step("clean_by_majority_structure",clean_by_majority_structure,df_raw)
 		clean_df, csv_files = clean_by_majority_structure(df_raw)
 
@@ -2466,6 +2582,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		traceback.print_exc()
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\kayro\Desktop\2974_IDBI_Bank.csv"
-	output_csv = r"C:\Users\kayro\Desktop\r2974_IDBI_Bank.csv"
+	input_csv = r"C:\Users\kayro\Desktop\3024_Canara_Bank.csv"
+	output_csv = r"C:\Users\kayro\Desktop\3024_Canara_Bank.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
