@@ -98,7 +98,9 @@ def parse_custom_date(x) -> Optional[str]:
             return None
         
         original_x = str(x).strip()
-
+        iso_match = re.match(r'^(\d{4}-\d{2}-\d{2})', original_x)
+        if iso_match:
+            original_x = iso_match.group(1)
         date_match = re.search(r'(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{4})', original_x)
         if date_match:
             original_x = date_match.group(1)
