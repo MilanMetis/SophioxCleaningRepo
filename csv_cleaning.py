@@ -2466,6 +2466,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		traceback.print_exc()
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\kayro\Desktop\2974_IDBI_Bank.csv"
-	output_csv = r"C:\Users\kayro\Desktop\r2974_IDBI_Bank.csv"
+	input_csv = r"C:\Users\Admin\Downloads\stetment_1778050579850.csv"
+	output_csv = r"C:\Users\Admin\Downloads\rstetment_1778050579850.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
