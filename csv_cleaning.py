@@ -1036,7 +1036,7 @@ def normalize_headers(df):
 		"Narration": {"Transaction Reference","Transaction","TransactionReference","RANSACTIONDETAILS","Payment Narration","TransactionRemarks","TransactionDetails CommentÂ·PlaceÂ·PaymentMethod","TransactionDescription","Transaction Description", "TRANSACTIONDETAILS", "Narration","Description", "Details", "Remarks", "Particulars","Transaction Particulars", "Partculars","TRANSACTION DETAILS", "DETAILS", "NARRATION","PARTICULARS", "Transaction Remarks","PARTICULARS CHO.NO.", "Transactio nRemarks","TransactionParticulars"},
 		"Credits": {"CrAmount","DEPOSITAMT","Credl","CreditAmount","Deposits (in Rs.)","DepositAmtï¼ˆINR)","Deposit (CR Amount)", "Deposits (INR)", "CREDIT()","Credit","Deposits (INR)", "Cr", "Cr Amt", "Deposit amt."," Credit(INR)", "CREDIT", "DEPOSIT(CR)", "DEPOSITS","Deposit Amt.", "Deposits", "Credit Amount"," Deposit Amount(INR)", "DEPOSIT (CR)", "CR"},
 		"Debits": {"Deblt","W ithdrawals","Dr Amount","Debit Amount", "DebitAmount","DEBIT(R)","WithdrawalAmt(INR)","WITH DRAWALS","Withdraw (DRAmount)", "Withdrawal (Dr)","Debit","Withdrawal(INR)", "Dr", "Dr Amt", "Withdrawalamt"," Debit(INR)", "DEBIT", " WITHDRAWAL(DR)", "WITHDRAWALS", "Withdrawal Amt.", "Withdrawals"," Transaction Amount(INR)", "WITHDRAWAL (DR)","Witndrawals", "DR"},
-		"Balance": {"Amount","BALANCEAMT","TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "Batance","BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance","C losingBalance INR"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance","Total Amount Dr/Cr"}
+		"Balance": {"Transactional Balance","Amount","BALANCEAMT","TOTALBALANCE","BALANCE()","TotalAmount","BOOKBAL", "Batance","BALANCER","RunningBalance", "Closing balance","Available balance", "Balance (Rs.)", "Balance"," Balance(INR)", "BALANCE", "Closing Balance","C losingBalance INR"," Available Balance(INR)", "BALANCE(INR)", "Balance(IN R)", "Balance (INR)", "Available Balance(INR", "NetBalance","Total Amount Dr/Cr"}
 	}
 
 	HEADER_REGEX = {
@@ -1067,7 +1067,7 @@ def normalize_headers(df):
 	cols_lower = [str(c).lower().strip() for c in df.columns]
 
 	has_amount = any(re.search(r'\bamount\b', c) for c in cols_lower)
-	has_current_balance = any(re.search(r'\bcurrent\s*balance\b', c) for c in cols_lower)
+	has_current_balance = any(re.search(r'\bcurrent\s*balance\b|transactional\s*balance\b', c) for c in cols_lower)
 
 	standard_headers = set(headers.keys())
 
@@ -1117,7 +1117,7 @@ def normalize_headers(df):
 		if has_amount and has_current_balance:
 
 			# Map Current Balance → Balance
-			if re.search(r'curr.*bal', clean_col):   # OCR-safe
+			if re.search(r'curr.*bal|transactional\s*balance', clean_col):   # OCR-safe
 				mapped = "Balance"
 				normalized_cols.append(mapped)
 				continue  # stop further processing for this column
@@ -2582,6 +2582,6 @@ def clean_main(file_path, output_path, logging=True, debug=True):
 		traceback.print_exc()
 
 if __name__ == "__main__":
-	input_csv = r"C:\Users\kayro\Desktop\3024_Canara_Bank.csv"
-	output_csv = r"C:\Users\kayro\Desktop\3024_Canara_Bank.csv"
+	input_csv = r"C:\Users\Admin\Downloads\9994585173-6470_1776258703564.csv"
+	output_csv = r"C:\Users\Admin\Downloads\r9994585173-6470_1776258703564.csv"
 	clean_main(input_csv, output_csv, logging=False, debug=True)
